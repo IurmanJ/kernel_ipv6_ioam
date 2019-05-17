@@ -86,6 +86,12 @@ sudo lxc-attach -n aramis
 sudo tcpdump -vv -l -i h_aramis1
 ```
 
+Example of output for one ping
+```
+20:23:34.607156 IP6 (flowlabel 0x2cdd6, hlim 62, next-header Options (0) payload length: 104) db00::2 > db03::2: HBH (padn)(opt_type 0x20: len=34) [icmp6 sum ok] ICMP6, echo request, seq 1
+20:23:34.607219 IP6 (flowlabel 0xa1eae, hlim 63, next-header ICMPv6 (58) payload length: 64) db03::2 > db00::2: [icmp6 sum ok] ICMP6, echo reply, seq 1
+```
+
 Stop and clean the topology when you're finished
 ```
 cd lxc/
