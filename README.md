@@ -72,7 +72,7 @@ cd lxc/
 
 Open a shell and enter **Alpha**.
 ```
-sudo lxc-attach -n athos
+sudo lxc-attach -n alpha
 ```
 
 From inside **Alpha**, generate some traffic (eg. a ping) towards **Beta**
@@ -80,7 +80,7 @@ From inside **Alpha**, generate some traffic (eg. a ping) towards **Beta**
 ping6 db03::2
 ```
 
-You can open another shell, enter either **Athos**, **Porthos** or **Aramis** and use tcpdump to see IOAM
+Open another shell, enter either **Athos**, **Porthos** or **Aramis** and use tcpdump to see IOAM
 ```
 sudo lxc-attach -n aramis
 sudo tcpdump -vv -l -i h_aramis1
