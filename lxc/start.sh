@@ -10,11 +10,11 @@ sudo lxc-create -n aramis -t ubuntu
 sudo lxc-create -n beta -t ubuntu
 
 # Start containers
-sudo lxc-start -n alpha -d
-sudo lxc-start -n athos -d
-sudo lxc-start -n porthos -d
-sudo lxc-start -n aramis -d
-sudo lxc-start -n beta -d
+sudo lxc-start -n alpha -d -f lxc_shared.conf
+sudo lxc-start -n athos -d -f lxc_shared.conf
+sudo lxc-start -n porthos -d -f lxc_shared.conf
+sudo lxc-start -n aramis -d -f lxc_shared.conf
+sudo lxc-start -n beta -d -f lxc_shared.conf
 
 # PIDs containers
 pid_alpha=$(sudo lxc-info -n alpha | grep "PID:" | awk '{print $2}')
@@ -22,6 +22,10 @@ pid_athos=$(sudo lxc-info -n athos | grep "PID:" | awk '{print $2}')
 pid_porthos=$(sudo lxc-info -n porthos | grep "PID:" | awk '{print $2}')
 pid_aramis=$(sudo lxc-info -n aramis | grep "PID:" | awk '{print $2}')
 pid_beta=$(sudo lxc-info -n beta | grep "PID:" | awk '{print $2}')
+
+# IOAM device: Major,Minor numbers
+major=$(ls -al /dev/ioam | awk '{print $5}' | cut -d',' -f 1)
+minor=$(ls -al /dev/ioam | awk '{print $6}' | cut -d',' -f 1)
 
 # Bridge Alpha <-> Athos
 sudo ip link add name h_alpha1 type veth peer name h_athos1
@@ -64,7 +68,7 @@ sudo lxc-attach -n alpha -- \
 sudo lxc-attach -n athos -- \
   bash -c "
     sysctl -w net.ipv6.conf.all.forwarding=1
-    mknod /dev/ioam c 10 59
+    mknod /dev/ioam c $major $minor
     chmod 666 /dev/ioam
     ip link set dev h_athos1 address 2e:fe:7c:b0:c7:71
     ip link set dev h_athos2 address 2e:fe:7c:b0:c7:72
@@ -81,7 +85,7 @@ sudo lxc-attach -n athos -- \
 sudo lxc-attach -n porthos -- \
   bash -c "
     sysctl -w net.ipv6.conf.all.forwarding=1
-    mknod /dev/ioam c 10 59
+    mknod /dev/ioam c $major $minor
     chmod 666 /dev/ioam
     ip link set dev h_porthos1 address 2e:fe:7c:b0:c7:73
     ip link set dev h_porthos2 address 2e:fe:7c:b0:c7:74
@@ -98,7 +102,7 @@ sudo lxc-attach -n porthos -- \
 sudo lxc-attach -n aramis -- \
   bash -c "
     sysctl -w net.ipv6.conf.all.forwarding=1
-    mknod /dev/ioam c 10 59
+    mknod /dev/ioam c $major $minor
     chmod 666 /dev/ioam
     ip link set dev h_aramis1 address 2e:fe:7c:b0:c7:75
     ip link set dev h_aramis2 address 2e:fe:7c:b0:c7:76
