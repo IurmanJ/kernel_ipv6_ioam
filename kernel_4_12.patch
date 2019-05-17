@@ -1231,7 +1231,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
 diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-4.12_iOAM/net/ipv6/ioam.c
 --- linux-4.12/net/ipv6/ioam.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-4.12_iOAM/net/ipv6/ioam.c	2019-05-15 10:13:20.427077200 +0200
++++ linux-4.12_iOAM/net/ipv6/ioam.c	2019-05-17 19:08:27.939781169 +0200
 @@ -0,0 +1,655 @@
 +/*
 + *	In-situ OAM (IOAM) for IPv6
@@ -1659,7 +1659,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +			return IOAM_ERR_IFNUM;
 +		if (buffer.ns_nb > IOAM_MAX_NS_NB || buffer.encap_nb > IOAM_MAX_NS_NB)
 +			return IOAM_ERR_NSNUM;
-+		if (buffer.encap_freq <= 0)
++		if (buffer.encap_nb > 0 && buffer.encap_freq <= 0)
 +			return IOAM_ERR_FREQ;
 +
 +		if (copy_from_user(buffer.ifs, argp->ifs, buffer.if_nb * sizeof(struct ioam_interface))
