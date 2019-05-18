@@ -968,7 +968,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +
 diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c linux-4.12_iOAM/net/ipv6/exthdrs.c
 --- linux-4.12/net/ipv6/exthdrs.c	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/exthdrs.c	2019-05-15 10:38:15.598417760 +0200
++++ linux-4.12_iOAM/net/ipv6/exthdrs.c	2019-05-18 14:54:59.119348390 +0200
 @@ -55,6 +55,11 @@
  
  #include <linux/uaccess.h>
@@ -1060,7 +1060,22 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  #if IS_ENABLED(CONFIG_IPV6_MIP6)
  	{
  		.type	= IPV6_TLV_HAO,
-@@ -700,6 +749,106 @@
+@@ -259,6 +308,14 @@
+ #if IS_ENABLED(CONFIG_IPV6_MIP6)
+ 	__u16 dstbuf;
+ #endif
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	struct ioam_parsed_eh *parsed_eh = opt->ioam;
++	parsed_eh->pad_size = 0;
++	parsed_eh->decap_size = 0;
++	parsed_eh->free_idx = 0;
++	parsed_eh->last_pad.offset = 0;
++	parsed_eh->last_pad.size = 0;
++#endif
+ 	struct dst_entry *dst = skb_dst(skb);
+ 
+ 	if (!pskb_may_pull(skb, skb_transport_offset(skb) + 8) ||
+@@ -700,6 +757,106 @@
  	return skb_dst(skb) ? dev_net(skb_dst(skb)->dev) : dev_net(skb->dev);
  }
  
@@ -1167,7 +1182,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  /* Router Alert as of RFC 2711 */
  
  static bool ipv6_hop_ra(struct sk_buff *skb, int optoff)
-@@ -786,6 +935,12 @@
+@@ -786,6 +943,12 @@
  }
  
  static const struct tlvtype_proc tlvprochopopt_lst[] = {
@@ -1180,7 +1195,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  	{
  		.type	= IPV6_TLV_ROUTERALERT,
  		.func	= ipv6_hop_ra,
-@@ -804,6 +959,17 @@
+@@ -804,6 +967,17 @@
  int ipv6_parse_hopopts(struct sk_buff *skb)
  {
  	struct inet6_skb_parm *opt = IP6CB(skb);
@@ -1198,7 +1213,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
  	/*
  	 * skb_network_header(skb) is equal to skb->data, and
-@@ -819,12 +985,30 @@
+@@ -819,12 +993,30 @@
  	}
  
  	opt->flags |= IP6SKB_HOPBYHOP;
@@ -1890,7 +1905,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +
 diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c linux-4.12_iOAM/net/ipv6/ip6_input.c
 --- linux-4.12/net/ipv6/ip6_input.c	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/ip6_input.c	2019-04-23 18:35:57.132825695 +0200
++++ linux-4.12_iOAM/net/ipv6/ip6_input.c	2019-05-18 14:55:36.484337124 +0200
 @@ -47,6 +47,10 @@
  #include <net/inet_ecn.h>
  #include <net/dst_metadata.h>
@@ -1947,11 +1962,29 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  	rcu_read_unlock();
  
  	/* Must drop socket now because of tproxy. */
-@@ -283,6 +311,8 @@
+@@ -229,6 +257,9 @@
+ 	int nexthdr;
+ 	bool raw;
+ 	bool have_final = false;
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	struct ioam_parsed_eh parsed_eh;
++#endif
  
+ 	/*
+ 	 *	Parse extension headers
+@@ -281,8 +312,16 @@
+ 		    !xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb))
+ 			goto discard;
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++		IP6CB(skb)->ioam = &parsed_eh;
++#endif
  		ret = ipprot->handler(skb);
  		if (ret > 0) {
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
 +			//TODO encap ioam_dst here
++			IP6CB(skb)->ioam = NULL;
++#endif
 +
  			if (ipprot->flags & INET6_PROTO_FINAL) {
  				/* Not an extension header, most likely UDP
