@@ -968,7 +968,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +
 diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c linux-4.12_iOAM/net/ipv6/exthdrs.c
 --- linux-4.12/net/ipv6/exthdrs.c	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/exthdrs.c	2019-05-20 12:40:49.613344805 +0200
++++ linux-4.12_iOAM/net/ipv6/exthdrs.c	2019-06-03 15:20:12.890877441 +0200
 @@ -55,6 +55,11 @@
  
  #include <linux/uaccess.h>
@@ -1075,7 +1075,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
  	if (!pskb_may_pull(skb, skb_transport_offset(skb) + 8) ||
  	    !pskb_may_pull(skb, (skb_transport_offset(skb) +
-@@ -700,6 +757,106 @@
+@@ -700,6 +757,120 @@
  	return skb_dst(skb) ? dev_net(skb_dst(skb)->dev) : dev_net(skb->dev);
  }
  
@@ -1105,7 +1105,6 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
 +	 *	    to say that the output dev can either be EGRESS or NONE,
 +	 *	    where NONE refers as a decap domain border in this case)
 +	 */
-+	//TODO now, the only condition should be that RX intf is in ingress mode (right ?)
 +	if (!(skb->dev->ioam_if_mode & IOAM_IF_MODE_INGRESS)
 +		|| (skb_dst(skb)->dev->ioam_if_mode & IOAM_IF_MODE_INGRESS))
 +		return false;
@@ -1171,6 +1170,21 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
 +	case IOAM_OPTION_POT:
 +		//TODO
 +		break;
++	case IOAM_OPTION_E2E:
++		/*
++		 * Allow Edge-to-Edge option to be carried as Hop-by-Hop option
++		 *
++		 * A node considers itself as the destination if either:
++		 *  1) It is the destination
++		 *  2) It must decapsulate the IOAM namespace (= penultimate
++		 *     node); next node is assumed to be the destination
++		 *
++		 * Otherwise, it is ignored
++		 */
++		if (skb->dev == skb_dst(skb)->dev || ns->ns_decap) {
++			//TODO
++		}
++		break;
 +	default:
 +		return false;
 +	}
@@ -1182,7 +1196,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  /* Router Alert as of RFC 2711 */
  
  static bool ipv6_hop_ra(struct sk_buff *skb, int optoff)
-@@ -786,6 +943,12 @@
+@@ -786,6 +957,12 @@
  }
  
  static const struct tlvtype_proc tlvprochopopt_lst[] = {
@@ -1195,7 +1209,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  	{
  		.type	= IPV6_TLV_ROUTERALERT,
  		.func	= ipv6_hop_ra,
-@@ -804,6 +967,17 @@
+@@ -804,6 +981,17 @@
  int ipv6_parse_hopopts(struct sk_buff *skb)
  {
  	struct inet6_skb_parm *opt = IP6CB(skb);
@@ -1213,7 +1227,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
  	/*
  	 * skb_network_header(skb) is equal to skb->data, and
-@@ -819,12 +993,30 @@
+@@ -819,12 +1007,30 @@
  	}
  
  	opt->flags |= IP6SKB_HOPBYHOP;
