@@ -1,7 +1,8 @@
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/ipv6.h linux-4.12_iOAM/include/linux/ipv6.h
---- linux-4.12/include/linux/ipv6.h	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/include/linux/ipv6.h	2019-04-21 15:17:30.796680279 +0200
-@@ -120,6 +120,9 @@
+diff --git a/include/linux/ipv6.h b/include/linux/ipv6.h
+index e1b4429..9c5c6e1 100644
+--- a/include/linux/ipv6.h
++++ b/include/linux/ipv6.h
+@@ -120,6 +120,9 @@ struct inet6_skb_parm {
  	__u16			dsthao;
  #endif
  	__u16			frag_max_size;
@@ -11,9 +12,10 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/ipv6.h l
  
  #define IP6SKB_XFRM_TRANSFORMED	1
  #define IP6SKB_FORWARDED	2
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/netdevice.h linux-4.12_iOAM/include/linux/netdevice.h
---- linux-4.12/include/linux/netdevice.h	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/include/linux/netdevice.h	2019-04-30 16:02:01.780899342 +0200
+diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
+index 4ed952c..98a3a04 100644
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
 @@ -53,6 +53,10 @@
  #include <uapi/linux/pkt_cls.h>
  #include <linux/hashtable.h>
@@ -25,7 +27,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/netdevic
  struct netpoll_info;
  struct device;
  struct phy_device;
-@@ -1646,6 +1650,16 @@
+@@ -1646,6 +1650,16 @@ struct net_device {
  	char			name[IFNAMSIZ];
  	struct hlist_node	name_hlist;
  	char 			*ifalias;
@@ -42,10 +44,11 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/netdevic
  	/*
  	 *	I/O specific fields
  	 *	FIXME: Merge these and struct ifmap into one
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/skbuff.h linux-4.12_iOAM/include/linux/skbuff.h
---- linux-4.12/include/linux/skbuff.h	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/include/linux/skbuff.h	2019-04-21 17:11:14.130351328 +0200
-@@ -667,7 +667,11 @@
+diff --git a/include/linux/skbuff.h b/include/linux/skbuff.h
+index a098d95..e828c2e 100644
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -667,7 +667,11 @@ struct sk_buff {
  	 * want to keep them across layers you have to do a skb_clone()
  	 * first. This is owned by whoever has the skb queued ATM.
  	 */
@@ -57,7 +60,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/skbuff.h
  
  	unsigned long		_skb_refdst;
  	void			(*destructor)(struct sk_buff *skb);
-@@ -3743,7 +3747,11 @@
+@@ -3743,7 +3747,11 @@ struct skb_gso_cb {
  	__wsum	csum;
  	__u16	csum_start;
  };
@@ -69,10 +72,12 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/linux/skbuff.h
  #define SKB_GSO_CB(skb) ((struct skb_gso_cb *)((skb)->cb + SKB_SGO_CB_OFFSET))
  
  static inline int skb_tnl_header_len(const struct sk_buff *inner_skb)
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/net/ioam.h linux-4.12_iOAM/include/net/ioam.h
---- linux-4.12/include/net/ioam.h	1970-01-01 01:00:00.000000000 +0100
-+++ linux-4.12_iOAM/include/net/ioam.h	2019-05-15 10:19:43.898088090 +0200
-@@ -0,0 +1,644 @@
+diff --git a/include/net/ioam.h b/include/net/ioam.h
+new file mode 100644
+index 0000000..d91ed8c
+--- /dev/null
++++ b/include/net/ioam.h
+@@ -0,0 +1,649 @@
 +#ifndef _NET_IOAM_H
 +#define _NET_IOAM_H
 +
@@ -81,6 +86,11 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/net/ioam.h lin
 +#include <linux/hashtable.h>
 +#include <net/ipv6.h>
 +#include <uapi/linux/ioam.h>
++
++#define IOAM_OPTION_PREALLOC 0 /* (Hop-by-Hop) pre-allocated trace option */
++#define IOAM_OPTION_INCREM   1 /* (Hop-by-Hop) incremental trace option */
++#define IOAM_OPTION_POT      2 /* (Hop-by-Hop) proof of transit option */
++#define IOAM_OPTION_E2E      3 /* (Destination) edge-to-edge option */
 +
 +/* ----- Sizes (fixed) in octet ----- */
 +#define IOAM_IPV6OPT_HEADER_SIZE 4
@@ -717,9 +727,10 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/net/ioam.h lin
 +
 +#endif
 +
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/net/netns/ipv6.h linux-4.12_iOAM/include/net/netns/ipv6.h
---- linux-4.12/include/net/netns/ipv6.h	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/include/net/netns/ipv6.h	2019-04-06 13:06:56.055476731 +0200
+diff --git a/include/net/netns/ipv6.h b/include/net/netns/ipv6.h
+index de7745e..6aa0c26 100644
+--- a/include/net/netns/ipv6.h
++++ b/include/net/netns/ipv6.h
 @@ -8,6 +8,10 @@
  #define __NETNS_IPV6_H__
  #include <net/dst_ops.h>
@@ -731,7 +742,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/net/netns/ipv6
  struct ctl_table_header;
  
  struct netns_sysctl_ipv6 {
-@@ -86,6 +90,11 @@
+@@ -86,6 +90,11 @@ struct netns_ipv6 {
  	atomic_t		dev_addr_genid;
  	atomic_t		fib6_sernum;
  	struct seg6_pernet_data *seg6_data;
@@ -743,10 +754,11 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/net/netns/ipv6
  };
  
  #if IS_ENABLED(CONFIG_NF_DEFRAG_IPV6)
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/in6.h linux-4.12_iOAM/include/uapi/linux/in6.h
---- linux-4.12/include/uapi/linux/in6.h	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/include/uapi/linux/in6.h	2019-03-11 10:27:44.330301104 +0100
-@@ -144,6 +144,8 @@
+diff --git a/include/uapi/linux/in6.h b/include/uapi/linux/in6.h
+index 46444f8..7dc2d97 100644
+--- a/include/uapi/linux/in6.h
++++ b/include/uapi/linux/in6.h
+@@ -144,6 +144,8 @@ struct in6_flowlabel_req {
  #define IPV6_TLV_PADN		1
  #define IPV6_TLV_ROUTERALERT	5
  #define IPV6_TLV_CALIPSO	7	/* RFC 5570 */
@@ -755,10 +767,12 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/in6
  #define IPV6_TLV_JUMBO		194
  #define IPV6_TLV_HAO		201	/* home address option */
  
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioam.h linux-4.12_iOAM/include/uapi/linux/ioam.h
---- linux-4.12/include/uapi/linux/ioam.h	1970-01-01 01:00:00.000000000 +0100
-+++ linux-4.12_iOAM/include/uapi/linux/ioam.h	2019-05-15 10:14:07.820469631 +0200
-@@ -0,0 +1,207 @@
+diff --git a/include/uapi/linux/ioam.h b/include/uapi/linux/ioam.h
+new file mode 100644
+index 0000000..1095bd5
+--- /dev/null
++++ b/include/uapi/linux/ioam.h
+@@ -0,0 +1,248 @@
 +#ifndef _UAPI_LINUX_IOAM_H
 +#define _UAPI_LINUX_IOAM_H
 +
@@ -766,32 +780,108 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +#include <linux/if.h>
 +#include <linux/ioctl.h>
 +
++typedef __u8  boolean;
++#define false 0
++#define true  1
++
 +/**
-+ * struct ioam_encapsulate - iOAM-specific data per namespace to encapsulate
++ * struct ioam_trace_option - iOAM Trace option
 + *
-+ * @namespace_id: Namespace ID
-+ * @mode: 	  iOAM options required
-+ * @hop_nb: 	  Number of hops that will insert iOAM data on the path
-+ * @trace_type:	  Trace options required
-+ * @pot_type:	  Proof of Transit options required
-+ * @e2e_type:	  Edge-to-edge options required
-+ * @if_name:	  Real name of EGRESS interface
++ * @type:  	 Trace option types required
++ * @hop_nb: 	 Number of hops to insert iOAM data on the path
++ * @incremental: Incremental Trace Option (default: false = pre-allocated)
++ * @checksum:	 Checksum complement (default: false)
++ * @enabled:	 Take this option into account (default: false)
 + * 
-+ * This structure represents iOAM-specific data per namespace to encapsulate
++ * This structure represents an iOAM Trace option
++ */
++struct ioam_trace_option
++{
++#define IOAM_TRACE_TYPE_0  (1<<15) /* hop_lim and node_id */
++#define IOAM_TRACE_TYPE_1  (1<<14) /* ingress_if_id and egress_if_id */
++#define IOAM_TRACE_TYPE_2  (1<<13) /* timestamp seconds */
++#define IOAM_TRACE_TYPE_3  (1<<12) /* timestamp subseconds */
++#define IOAM_TRACE_TYPE_4  (1<<11) /* transit delay */
++#define IOAM_TRACE_TYPE_5  (1<<10) /* namespace specific data */
++#define IOAM_TRACE_TYPE_6  (1<<9)  /* queue depth */
++#define IOAM_TRACE_TYPE_7  (1<<8)  /* opaque state snapshot */
++#define IOAM_TRACE_TYPE_8  (1<<7)  /* hop_lim and node_id (wide) */
++#define IOAM_TRACE_TYPE_9  (1<<6)  /* ingress_if_id and egress_if_id (wide) */
++#define IOAM_TRACE_TYPE_10 (1<<5)  /* namespace specific data (wide) */
++#define IOAM_TRACE_TYPE_11 (1<<4)  /* buffer occupancy */
++	__u16 type;
++
++#define IOAM_MAX_HOP_NB 10
++	__u8  hop_nb;
++
++	boolean  incremental;
++	boolean  checksum;
++	boolean  enabled;
++};
++
++/**
++ * struct ioam_pot_option - iOAM Proof of Transit (POT) option
++ *
++ * @type:  	POT option type required
++ * @profile:	POT profile to use
++ * @enabled:	Take this option into account (default: false)
++ * 
++ * This structure represents an iOAM Proof of Transit (POT) option
++ */
++struct ioam_pot_option
++{
++#define IOAM_POT_TYPE_0 0 /* random + cumulative */
++	__u8 type;
++
++#define IOAM_POT_PROFILE_0 0
++#define IOAM_POT_PROFILE_1 1
++	__u8 profile;
++
++	boolean enabled;
++};
++
++/**
++ * struct ioam_e2e_option - iOAM Edge-to-Edge (E2E) option
++ *
++ * @type:  	E2E option types required
++ * @inside_hbh:	Carried as an Hop-by-Hop option
++ *		(default: false = carried as a Destination option)
++ * @enabled:	Take this option into account (default: false)
++ * 
++ * This structure represents an iOAM Edge-to-Edge (E2E) option
++ */
++struct ioam_e2e_option
++{
++#define IOAM_E2E_TYPE_0 (1<<15) /* 64-bit sequence number */
++#define IOAM_E2E_TYPE_1 (1<<14) /* 32-bit sequence number */
++#define IOAM_E2E_TYPE_2 (1<<13) /* timestamp seconds for the transmission */
++#define IOAM_E2E_TYPE_3 (1<<12) /* timestamp subseconds for the transmission */
++	__u16 type;
++
++	//TODO "packet group" for bits 0-1 of type field
++	boolean  inside_hbh; //default: false (= carried as destination option)
++	boolean  enabled;
++};
++
++/**
++ * struct ioam_encapsulate - Per namespace iOAM data to encapsulate
++ *
++ * @namespace_id: iOAM Namespace ID
++ * @if_name:	  Real name of EGRESS interface for encapsulating iOAM data
++ * @trace:	  iOAM Trace Option
++ * @pot:	  iOAM Proof of Transit (POT) Option
++ * @e2e:	  iOAM Edge-to-Edge (E2E) Option
++ * 
++ * This structure represents per namespace iOAM data to encapsulate
 + */
 +struct ioam_encapsulate
 +{
-+	//TODO try splitting ioam_insert into 3 struct (trace, pot, e2e) to merge "schema" inside "trace"
 +	__u16 namespace_id;
-+	__u8  mode; //3 bits
-+#define IOAM_MAX_HOP_NB 10
-+	__u8  hop_nb;
-+	__u16 trace_type;
-+	__u8  pot_type;
-+	__u16 e2e_type;
-+	//bool  trace_checksum; //TODO merge in trace
-+	//TODO use booleans or whatever to include flags for trace & pot modes
 +	char  if_name[IFNAMSIZ];
++
++	struct ioam_trace_option trace;
++	struct ioam_pot_option   pot;
++	struct ioam_e2e_option   e2e;
 +};
 +
 +/**
@@ -809,7 +899,8 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +	__u32 schema_id;
 +	__u8  length;
 +#define IOAM_MAX_OPAQUE_LEN 1020
-+	__u8  opaque_data[IOAM_MAX_OPAQUE_LEN]; //TODO use pointer (otherwise it makes ioctl switch buggy)
++	__u8  opaque_data[IOAM_MAX_OPAQUE_LEN]; 
++//TODO use pointer (otherwise it makes ioctl switch buggy as buffer is too big)
 +};
 +*/
 +
@@ -829,14 +920,13 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +{
 +#define IOAM_DEFAULT_NS_ID 0
 +	__u16 ns_id;
-+#define IOAM_NS_DECAP_TRUE 1
-+#define IOAM_NS_DECAP_FALSE 0
-+	__u8  ns_decap;
-+	//int   schema_nb;
++
++	boolean  ns_decap;
++	/*int   schema_nb;*/
 +	__u32 data;
 +
-+//#define IOAM_MAX_SC_NB 4
-+	//struct ioam_schema schemas[IOAM_MAX_SC_NB];
++/*#define IOAM_MAX_SC_NB 4
++	struct ioam_schema schemas[IOAM_MAX_SC_NB];*/
 +};
 +
 +/**
@@ -859,6 +949,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +#define IOAM_IF_MODE_INGRESS 1
 +#define IOAM_IF_MODE_EGRESS  2
 +	__u8  ioam_if_mode;
++
 +	char  if_name[IFNAMSIZ];
 +};
 +
@@ -870,6 +961,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 + * @ns_nb:	  Number of known iOAM namespaces
 + * @encap_nb:	  Number of new iOAM namespaces to encapsulate
 + * @encap_freq:	  Frequency of insertions as "1 over N" (N: 1=100%, 2=50%, ...)
++ *		  Mandatory if @encap_nb > 0, useless otherwise
 + * @ifs:	  Interfaces involved in iOAM for current node
 + * @nss:	  iOAM namespaces known by current node
 + * @encaps:	  New iOAM namespaces to encapsulate
@@ -883,13 +975,13 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +#define IOAM_MAX_NODE_ID ((1<<24)-1)
 +	__u32 ioam_node_id;
 +
-+	int if_nb;
-+	int ns_nb;
-+	int encap_nb;
-+	int encap_freq;
++	unsigned int if_nb;
++	unsigned int ns_nb;
++	unsigned int encap_nb;
++	unsigned int encap_freq;
 +
-+#define IOAM_MAX_IF_NB  8
-+#define IOAM_MAX_NS_NB  16
++#define IOAM_MAX_IF_NB 8
++#define IOAM_MAX_NS_NB 16
 +	/* Node's iOAM interfaces */
 +	struct ioam_interface ifs[IOAM_MAX_IF_NB];
 +
@@ -900,13 +992,15 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +	struct ioam_encapsulate encaps[IOAM_MAX_NS_NB];
 +};
 +
++/*
++ * IOCTL related
++ */
 +#define IOAM_IOC_MAGIC ('x')
 +#define IOAM_IOC_REGISTER _IOW(IOAM_IOC_MAGIC, 10, struct ioam_node)
 +#define IOAM_IOC_UNREGISTER _IO(IOAM_IOC_MAGIC, 20)
 +
-+/* IOCTL return status */
-+#define IOAM_RET_OK	0 /* Everything went fine */
-+/* Errors */
++/* return status */
++#define IOAM_RET_OK	0  /* Everything went fine */
 +#define IOAM_ERR_CODE	1  /* Unknown IOCTL code */
 +#define IOAM_ERR_ALLOC	2  /* Allocation error */
 +#define IOAM_ERR_ALRDY	3  /* Already (un)registered */
@@ -915,60 +1009,49 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/include/uapi/linux/ioa
 +#define IOAM_ERR_IFNUM	6  /* Interface number exceeded */
 +#define IOAM_ERR_NSNUM	7  /* Namespace number exceeded */
 +#define IOAM_ERR_IFNAME	8  /* Unknown interface name */
-+#define IOAM_ERR_HOPNB	9  /* Hop number exceeded */
-+#define IOAM_ERR_MODE	10 /* Unknown iOAM mode(s) */
-+#define IOAM_ERR_TRACE	11 /* Unknown Trace type */
-+#define IOAM_ERR_POT	12 /* Unknown POT type */
-+#define IOAM_ERR_E2E	13 /* Unknown E2E type */
-+#define IOAM_ERR_FREQ	14 /* Incorrect frequency (must be > 0) */
-+#define IOAM_ERR_IFUNEX 15 /* Unexpected network device error */
-+
-+/********************************
-+  iOAM Modes
-+ ********************************/
-+
-+#define IOAM_OPTION_PREALLOC 0 /* (Hop-by-Hop) pre-allocated trace option */
-+#define IOAM_OPTION_INCREM   1 /* (Hop-by-Hop) incremental trace option */
-+#define IOAM_OPTION_POT      2 /* (Hop-by-Hop) proof of transit option */
-+#define IOAM_OPTION_E2E      3 /* (Destination) edge-to-edge option */
-+
-+/********************************
-+  Trace Options
-+ ********************************/
-+
-+#define IOAM_TRACE_TYPE_0  (1<<15) /* hop_lim and node_id */
-+#define IOAM_TRACE_TYPE_1  (1<<14) /* ingress_if_id and egress_if_id */
-+#define IOAM_TRACE_TYPE_2  (1<<13) /* timestamp seconds */
-+#define IOAM_TRACE_TYPE_3  (1<<12) /* timestamp subseconds */
-+#define IOAM_TRACE_TYPE_4  (1<<11) /* transit delay */
-+#define IOAM_TRACE_TYPE_5  (1<<10) /* namespace specific data */
-+#define IOAM_TRACE_TYPE_6  (1<<9)  /* queue depth */
-+#define IOAM_TRACE_TYPE_7  (1<<8)  /* opaque state snapshot */
-+#define IOAM_TRACE_TYPE_8  (1<<7)  /* hop_lim and node_id (wide) */
-+#define IOAM_TRACE_TYPE_9  (1<<6)  /* ingress_if_id and egress_if_id (wide) */
-+#define IOAM_TRACE_TYPE_10 (1<<5)  /* namespace specific data (wide) */
-+#define IOAM_TRACE_TYPE_11 (1<<4)  /* buffer occupancy */
-+
-+/********************************
-+  Proof of Transit (POT) Options
-+ ********************************/
-+
-+#define IOAM_POT_TYPE_0 0 /* random + cumulative */
-+
-+/********************************
-+  Edge-to-Edge (E2E) Options
-+ ********************************/
-+
-+#define IOAM_E2E_TYPE_0 (1<<15) /* 64-bit sequence number */
-+#define IOAM_E2E_TYPE_1 (1<<14) /* 32-bit sequence number */
-+#define IOAM_E2E_TYPE_2 (1<<13) /* timestamp seconds for the transmission */
-+#define IOAM_E2E_TYPE_3 (1<<12) /* timestamp subseconds for the transmission */
++#define IOAM_ERR_IFMODE 9  /* Incorrect interface mode */
++#define IOAM_ERR_HOPNB	10 /* Trace Hop number exceeded */
++#define IOAM_ERR_MODE	11 /* Unknown iOAM mode(s) */
++#define IOAM_ERR_TRACE	12 /* Unknown Trace type */
++#define IOAM_ERR_POT	13 /* Unknown POT type */
++#define IOAM_ERR_E2E	14 /* Unknown E2E type */
++#define IOAM_ERR_POTPFL 15 /* Unknown POT Profile */
++#define IOAM_ERR_FREQ	16 /* Incorrect frequency (must be > 0) */
++#define IOAM_ERR_IFUNEX 17 /* Unexpected network device error */
 +
 +#endif
 +
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c linux-4.12_iOAM/net/ipv6/exthdrs.c
---- linux-4.12/net/ipv6/exthdrs.c	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/exthdrs.c	2019-06-03 15:20:12.890877441 +0200
+diff --git a/net/ipv6/Kconfig b/net/ipv6/Kconfig
+index 48c4529..72dd60e 100644
+--- a/net/ipv6/Kconfig
++++ b/net/ipv6/Kconfig
+@@ -339,4 +339,10 @@ config IPV6_SEG6_HMAC
+ 
+ 	  If unsure, say N.
+ 
++config IPV6_IOAM
++	bool "IPv6: in-situ OAM (iOAM)"
++	depends on IPV6
++	---help---
++	  Enable iOAM
++
+ endif # IPV6
+diff --git a/net/ipv6/Makefile b/net/ipv6/Makefile
+index 217e9ff..99bb511 100644
+--- a/net/ipv6/Makefile
++++ b/net/ipv6/Makefile
+@@ -25,6 +25,7 @@ ipv6-$(CONFIG_SYN_COOKIES) += syncookies.o
+ ipv6-$(CONFIG_NETLABEL) += calipso.o
+ ipv6-$(CONFIG_IPV6_SEG6_LWTUNNEL) += seg6_iptunnel.o
+ ipv6-$(CONFIG_IPV6_SEG6_HMAC) += seg6_hmac.o
++ipv6-$(CONFIG_IPV6_IOAM) += ioam.o
+ 
+ ipv6-objs += $(ipv6-y)
+ 
+diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
+index b636f1da..42139c2 100644
+--- a/net/ipv6/exthdrs.c
++++ b/net/ipv6/exthdrs.c
 @@ -55,6 +55,11 @@
  
  #include <linux/uaccess.h>
@@ -981,7 +1064,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  /*
   *	Parsing tlv encoded headers.
   *
-@@ -107,6 +112,11 @@
+@@ -107,6 +112,11 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
  	int off = skb_network_header_len(skb);
  	int len = (skb_transport_header(skb)[1] + 1) << 3;
  	int padlen = 0;
@@ -993,7 +1076,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
  	if (skb_transport_offset(skb) + len > skb_headlen(skb))
  		goto bad;
-@@ -122,6 +132,11 @@
+@@ -122,6 +132,11 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
  		case IPV6_TLV_PAD1:
  			optlen = 1;
  			padlen++;
@@ -1005,7 +1088,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  			if (padlen > 7)
  				goto bad;
  			break;
-@@ -133,6 +148,11 @@
+@@ -133,6 +148,11 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
  			 * See also RFC 4942, Section 2.1.9.5.
  			 */
  			padlen += optlen;
@@ -1017,7 +1100,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  			if (padlen > 7)
  				goto bad;
  			/* RFC 4942 recommends receiving hosts to
-@@ -180,6 +200,29 @@
+@@ -180,6 +200,29 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
    Destination options header.
   *****************************/
  
@@ -1047,7 +1130,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  #if IS_ENABLED(CONFIG_IPV6_MIP6)
  static bool ipv6_dest_hao(struct sk_buff *skb, int optoff)
  {
-@@ -244,6 +287,12 @@
+@@ -244,6 +287,12 @@ static bool ipv6_dest_hao(struct sk_buff *skb, int optoff)
  #endif
  
  static const struct tlvtype_proc tlvprocdestopt_lst[] = {
@@ -1060,7 +1143,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  #if IS_ENABLED(CONFIG_IPV6_MIP6)
  	{
  		.type	= IPV6_TLV_HAO,
-@@ -260,6 +309,14 @@
+@@ -260,6 +309,14 @@ static int ipv6_destopt_rcv(struct sk_buff *skb)
  	__u16 dstbuf;
  #endif
  	struct dst_entry *dst = skb_dst(skb);
@@ -1075,7 +1158,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
  	if (!pskb_may_pull(skb, skb_transport_offset(skb) + 8) ||
  	    !pskb_may_pull(skb, (skb_transport_offset(skb) +
-@@ -700,6 +757,120 @@
+@@ -700,6 +757,120 @@ static inline struct net *ipv6_skb_net(struct sk_buff *skb)
  	return skb_dst(skb) ? dev_net(skb_dst(skb)->dev) : dev_net(skb->dev);
  }
  
@@ -1196,7 +1279,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  /* Router Alert as of RFC 2711 */
  
  static bool ipv6_hop_ra(struct sk_buff *skb, int optoff)
-@@ -786,6 +957,12 @@
+@@ -786,6 +957,12 @@ static bool ipv6_hop_calipso(struct sk_buff *skb, int optoff)
  }
  
  static const struct tlvtype_proc tlvprochopopt_lst[] = {
@@ -1209,7 +1292,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  	{
  		.type	= IPV6_TLV_ROUTERALERT,
  		.func	= ipv6_hop_ra,
-@@ -804,6 +981,17 @@
+@@ -804,6 +981,17 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
  int ipv6_parse_hopopts(struct sk_buff *skb)
  {
  	struct inet6_skb_parm *opt = IP6CB(skb);
@@ -1227,7 +1310,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  
  	/*
  	 * skb_network_header(skb) is equal to skb->data, and
-@@ -819,12 +1007,30 @@
+@@ -819,12 +1007,30 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
  	}
  
  	opt->flags |= IP6SKB_HOPBYHOP;
@@ -1258,10 +1341,12 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/exthdrs.c lin
  	return -1;
  }
  
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-4.12_iOAM/net/ipv6/ioam.c
---- linux-4.12/net/ipv6/ioam.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-4.12_iOAM/net/ipv6/ioam.c	2019-05-17 19:08:27.939781169 +0200
-@@ -0,0 +1,655 @@
+diff --git a/net/ipv6/ioam.c b/net/ipv6/ioam.c
+new file mode 100644
+index 0000000..bea2fce
+--- /dev/null
++++ b/net/ipv6/ioam.c
+@@ -0,0 +1,675 @@
 +/*
 + *	In-situ OAM (IOAM) for IPv6
 + *
@@ -1301,6 +1386,9 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +
 +	u16 hbh_idx;
 +	u16 dst_idx;
++
++	u16 hbh_opt_nb;
++	u16 dst_opt_nb;
 +};
 +
 +static long ioam_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
@@ -1360,8 +1448,10 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +	hn->hbh_len = 0;
 +	hn->dst_len = 0;
 +	/* Must be 4n aligned: EH header (2) + 2-octet alignment */
-+	hn->hbh_idx = 4;
-+	hn->dst_idx = 4;
++	hn->hbh_idx = ioam_ipv6opt_header_size();
++	hn->dst_idx = ioam_ipv6opt_header_size();
++	hn->hbh_opt_nb = 0;
++	hn->dst_opt_nb = 0;
 +
 +	INIT_HLIST_NODE(&hn->node);
 +	hash_add(hwrapper->htable, &hn->node, hn->ifindex);
@@ -1435,31 +1525,30 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +	net_namespace()->ipv6.ioam_node_id = 0;
 +}
 +
-+static struct ioam_eh * ioam_eh_alloc(u16 ioam_size, int encap_nb)
++static struct ioam_eh * ioam_eh_alloc(u16 ioam_size, unsigned int opt_nb)
 +{
-+	u8 header_size = 2;
-+	u8 align = 2;
-+	u8 pad_size = (8 - ((header_size + align + ioam_size) % 8)) % 8;
-+	u16 buffer_size = header_size + align + ioam_size + pad_size;
++	u8 header_size = ioam_ipv6opt_header_size();
++	u8 pad_size = (8 - ((header_size + ioam_size) % 8)) % 8;
++	u16 buffer_size = header_size + ioam_size + pad_size;
 +	int i;
 +
 +	struct ioam_eh *ioam_eh = kzalloc(sizeof(struct ioam_eh) + buffer_size, GFP_KERNEL);
 +	if (!ioam_eh)
 +		return NULL;
 +
-+	ioam_eh->ioam_opt_nb = encap_nb;
-+	ioam_eh->ioam_opt = kcalloc(encap_nb, sizeof(struct ioam_eh_opt *), GFP_KERNEL);
++	ioam_eh->ioam_opt_nb = opt_nb;
++	ioam_eh->ioam_opt = kcalloc(opt_nb, sizeof(struct ioam_eh_opt *), GFP_KERNEL);
 +	if (!ioam_eh->ioam_opt)
 +		return NULL;
 +
-+	for(i = 0; i < encap_nb; i++)
++	for(i = 0; i < opt_nb; i++)
 +	{
 +		ioam_eh->ioam_opt[i] = kmalloc(sizeof(struct ioam_eh_opt), GFP_KERNEL);
 +		if (!ioam_eh->ioam_opt[i])
 +			return NULL;
 +	}
 +
-+	ioam_eh->header_size = header_size + align;
++	ioam_eh->header_size = ioam_ipv6opt_header_size();
 +	ioam_eh->ioam_size = ioam_size;
 +	ioam_eh->pad_size = pad_size;
 +	ioam_eh->buffer_size = buffer_size;
@@ -1473,7 +1562,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +	/* Set head padding */
 +	ioam_eh->buffer[2] = IPV6_TLV_PADN;
 +
-+	/* Set padding, if any */
++	/* Set tail padding, if needed */
 +	if (ioam_eh->pad_size == 1)
 +		ioam_eh->buffer[ioam_eh->pad_offset] = IPV6_TLV_PAD1;
 +	else if (ioam_eh->pad_size > 0)
@@ -1485,9 +1574,9 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +	return ioam_eh;
 +}
 +
-+static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, int encap_nb, struct ioam_encapsulate *encaps)
++static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap_nb, struct ioam_encapsulate *encaps)
 +{
-+	int i;
++	int i, optnumhbh = 0, optnumdst = 0;
 +	u8 node_len;
 +	u16 size;
 +	struct net_device *dev;
@@ -1528,7 +1617,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +		/* Hop-by-hop iOAM data allocation per dev, if any */
 +		if (hn->hbh_len > 0)
 +		{
-+			dev->ioam_hbh = ioam_eh_alloc(hn->hbh_len, encap_nb);
++			dev->ioam_hbh = ioam_eh_alloc(hn->hbh_len, hn->hbh_opt_nb);
 +			if (!dev->ioam_hbh)
 +				goto error_release_all;
 +		}
@@ -1536,7 +1625,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +		/* Destination iOAM data allocation per dev, if any */
 +		if (hn->dst_len > 0)
 +		{
-+			dev->ioam_dst = ioam_eh_alloc(hn->dst_len, encap_nb);
++			dev->ioam_dst = ioam_eh_alloc(hn->dst_len, hn->dst_opt_nb);
 +			if (!dev->ioam_dst)
 +				goto error_release_all;
 +		}
@@ -1570,67 +1659,90 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +
 +		rtnl_lock();
 +
-+		if (encaps[i].mode == IOAM_OPTION_PREALLOC
-+			|| encaps[i].mode == IOAM_OPTION_INCREM)
++		if (encaps[i].trace.enabled)
 +		{
-+			node_len = ioam_trace_data_size(encaps[i].trace_type);
++			node_len = ioam_trace_data_size(encaps[i].trace.type);
 +
-+			if (encaps[i].mode == IOAM_OPTION_PREALLOC)
-+				size = ioam_ipv6opt_header_size() + ioam_trace_header_size() + node_len * encaps[i].hop_nb;
-+			else
++			if (encaps[i].trace.incremental)
 +				size = ioam_ipv6opt_header_size() + ioam_trace_header_size();
++			else
++				size = ioam_ipv6opt_header_size() + ioam_trace_header_size() + node_len * encaps[i].trace.hop_nb;
 +
 +			dev->ioam_hbh->buffer[hn->hbh_idx] = IPV6_TLV_IOAM_HOPOPTS;
 +			dev->ioam_hbh->buffer[hn->hbh_idx+1] = size - 2;
-+			dev->ioam_hbh->buffer[hn->hbh_idx+3] = encaps[i].mode;
++			dev->ioam_hbh->buffer[hn->hbh_idx+3] = (encaps[i].trace.incremental) ? IOAM_OPTION_INCREM : IOAM_OPTION_PREALLOC;
 +
 +			*(__be16 *)&dev->ioam_hbh->buffer[hn->hbh_idx+4] = cpu_to_be16(encaps[i].namespace_id);
 +			dev->ioam_hbh->buffer[hn->hbh_idx+6] = node_len << 1;
-+			dev->ioam_hbh->buffer[hn->hbh_idx+7] = (node_len >> 2) * (encaps[i].hop_nb - 1);
-+			*(__be32 *)&dev->ioam_hbh->buffer[hn->hbh_idx+8] = cpu_to_be32(encaps[i].trace_type << 16);
++			dev->ioam_hbh->buffer[hn->hbh_idx+7] = (node_len >> 2) * (encaps[i].trace.hop_nb - 1);
++			*(__be32 *)&dev->ioam_hbh->buffer[hn->hbh_idx+8] = cpu_to_be32(encaps[i].trace.type << 16);
 +
-+			dev->ioam_hbh->ioam_opt[i]->type = encaps[i].trace_type;
-+			dev->ioam_hbh->ioam_opt[i]->ns_data = ns->data;
-+			dev->ioam_hbh->ioam_opt[i]->write_offset = hn->hbh_idx + 12 + node_len*encaps[i].hop_nb - node_len - dev->ioam_hbh->ioam_offset;
-+			dev->ioam_hbh->ioam_opt[i]->write_handler = (encaps[i].mode == IOAM_OPTION_INCREM) ? NULL : ioam_fill_trace_data_node;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].trace.type;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 12 + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = (encaps[i].trace.incremental) ? NULL : ioam_fill_trace_data_node;
 +
++			optnumhbh++;
 +			hn->hbh_idx += size;
 +		}
-+		else if (encaps[i].mode == IOAM_OPTION_POT)
++		if (encaps[i].pot.enabled)
 +		{
-+			size = ioam_ipv6opt_header_size() + ioam_pot_size(encaps[i].pot_type);
++			size = ioam_ipv6opt_header_size() + ioam_pot_size(encaps[i].pot.type);
 +
 +			dev->ioam_hbh->buffer[hn->hbh_idx] = IPV6_TLV_IOAM_HOPOPTS;
 +			dev->ioam_hbh->buffer[hn->hbh_idx+1] = size - 2;
-+			dev->ioam_hbh->buffer[hn->hbh_idx+3] = encaps[i].mode;
++			dev->ioam_hbh->buffer[hn->hbh_idx+3] = IOAM_OPTION_POT;
 +
 +			*(__be16 *)&dev->ioam_hbh->buffer[hn->hbh_idx+4] = cpu_to_be16(encaps[i].namespace_id);
-+			dev->ioam_hbh->buffer[hn->hbh_idx+6] = encaps[i].pot_type;
++			dev->ioam_hbh->buffer[hn->hbh_idx+6] = encaps[i].pot.type;
++			dev->ioam_hbh->buffer[hn->hbh_idx+7] = encaps[i].pot.profile << 7;
 +
-+			dev->ioam_hbh->ioam_opt[i]->type = encaps[i].pot_type;
-+			dev->ioam_hbh->ioam_opt[i]->ns_data = ns->data;
-+			dev->ioam_hbh->ioam_opt[i]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
-+			dev->ioam_hbh->ioam_opt[i]->write_handler = ioam_fill_pot_data_node;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].pot.type;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = ioam_fill_pot_data_node;
 +
++			optnumhbh++;
 +			hn->hbh_idx += size;
 +		}
-+		else if (encaps[i].mode == IOAM_OPTION_E2E)
++		if (encaps[i].e2e.enabled)
 +		{
-+			size = ioam_ipv6opt_header_size() + ioam_e2e_size(encaps[i].e2e_type);
++			size = ioam_ipv6opt_header_size() + ioam_e2e_size(encaps[i].e2e.type);
 +
-+			dev->ioam_dst->buffer[hn->dst_idx] = IPV6_TLV_IOAM_DSTOPTS;
-+			dev->ioam_dst->buffer[hn->dst_idx+1] = size - 2;
-+			dev->ioam_dst->buffer[hn->dst_idx+3] = encaps[i].mode;
++			if (encaps[i].e2e.inside_hbh)
++			{
++				dev->ioam_hbh->buffer[hn->hbh_idx] = IPV6_TLV_IOAM_HOPOPTS;
++				dev->ioam_hbh->buffer[hn->hbh_idx+1] = size - 2;
++				dev->ioam_hbh->buffer[hn->hbh_idx+3] = IOAM_OPTION_E2E;
 +
-+			*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+4] = cpu_to_be16(encaps[i].namespace_id);
-+			*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+6] = cpu_to_be16(encaps[i].e2e_type);
++				*(__be16 *)&dev->ioam_hbh->buffer[hn->hbh_idx+4] = cpu_to_be16(encaps[i].namespace_id);
++				*(__be16 *)&dev->ioam_hbh->buffer[hn->hbh_idx+6] = cpu_to_be16(encaps[i].e2e.type);
 +
-+			dev->ioam_dst->ioam_opt[i]->type = encaps[i].e2e_type;
-+			dev->ioam_dst->ioam_opt[i]->ns_data = ns->data;
-+			dev->ioam_dst->ioam_opt[i]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
-+			dev->ioam_dst->ioam_opt[i]->write_handler = ioam_fill_e2e_data_node;
++				dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].e2e.type;
++				dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
++				dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
++				dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = ioam_fill_e2e_data_node;
 +
-+			hn->dst_idx += size;
++				optnumhbh++;
++				hn->hbh_idx += size;
++			}
++			else
++			{
++				dev->ioam_dst->buffer[hn->dst_idx] = IPV6_TLV_IOAM_DSTOPTS;
++				dev->ioam_dst->buffer[hn->dst_idx+1] = size - 2;
++				dev->ioam_dst->buffer[hn->dst_idx+3] = IOAM_OPTION_E2E;
++
++				*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+4] = cpu_to_be16(encaps[i].namespace_id);
++				*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+6] = cpu_to_be16(encaps[i].e2e.type);
++
++				dev->ioam_dst->ioam_opt[optnumdst]->type = encaps[i].e2e.type;
++				dev->ioam_dst->ioam_opt[optnumdst]->ns_data = ns->data;
++				dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
++				dev->ioam_dst->ioam_opt[optnumdst]->write_handler = ioam_fill_e2e_data_node;
++
++				optnumdst++;
++				hn->dst_idx += size;
++			}
 +		}
 +
 +		dev_put(dev);
@@ -1702,116 +1814,111 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +				return IOAM_ERR_COPY;
 +			if (!dev_exists(buffer.ifs[i].if_name))
 +				return IOAM_ERR_IFNAME;
++			if (buffer.ifs[i].ioam_if_mode > (IOAM_IF_MODE_INGRESS | IOAM_IF_MODE_EGRESS))
++				return IOAM_ERR_IFMODE;
 +		}
 +
 +		hash_init(hwrapper.htable);
 +		for(i = 0; i < buffer.encap_nb; i++)
 +		{
-+			if (buffer.encaps[i].hop_nb > IOAM_MAX_HOP_NB)
-+				return IOAM_ERR_HOPNB;
-+
 +			if (copy_from_user(buffer.encaps[i].if_name, argp->encaps[i].if_name, IFNAMSIZ))
 +				return IOAM_ERR_COPY;
 +			if (!dev_exists(buffer.encaps[i].if_name))
 +				return IOAM_ERR_IFNAME;
 +
++			if (copy_from_user(&buffer.encaps[i].trace, &argp->encaps[i].trace, sizeof(struct ioam_trace_option))
++			    || copy_from_user(&buffer.encaps[i].pot, &argp->encaps[i].pot, sizeof(struct ioam_pot_option))
++			    || copy_from_user(&buffer.encaps[i].e2e, &argp->encaps[i].e2e, sizeof(struct ioam_e2e_option)))
++				return IOAM_ERR_COPY;
++
 +			/*
 +			 * During validation, pre-compute iOAM lengths for
 +			 * hop-by-hop and destination options
 +			 */
-+			if (buffer.encaps[i].mode == IOAM_OPTION_PREALLOC
-+				|| buffer.encaps[i].mode == IOAM_OPTION_INCREM)
++			dev = dev_by_name(buffer.encaps[i].if_name);
++			if (!dev)
 +			{
-+				if (!ioam_valid_trace_type(buffer.encaps[i].trace_type))
++				clear_dev_counters(&hwrapper);
++				return IOAM_ERR_IFUNEX;
++			}
++
++			perdev_counters = dev_counters_get_or_create(&hwrapper, dev->ifindex);
++			if (!perdev_counters)
++			{
++				dev_put(dev);
++				clear_dev_counters(&hwrapper);
++				return IOAM_ERR_ALLOC;
++			}
++
++			if (buffer.encaps[i].trace.enabled)
++			{
++				if (!ioam_valid_trace_type(buffer.encaps[i].trace.type))
 +				{
++					dev_put(dev);
 +					clear_dev_counters(&hwrapper);
 +					return IOAM_ERR_TRACE;
 +				}
 +
-+				dev = dev_by_name(buffer.encaps[i].if_name);
-+				if (!dev)
-+				{
-+					clear_dev_counters(&hwrapper);
-+					return IOAM_ERR_IFUNEX;
-+				}
-+
-+				perdev_counters = dev_counters_get_or_create(&hwrapper, dev->ifindex);
-+				if (!perdev_counters)
++				if (buffer.encaps[i].trace.hop_nb > IOAM_MAX_HOP_NB)
 +				{
 +					dev_put(dev);
 +					clear_dev_counters(&hwrapper);
-+					return IOAM_ERR_ALLOC;
++					return IOAM_ERR_HOPNB;
 +				}
 +
-+				if (buffer.encaps[i].mode == IOAM_OPTION_PREALLOC)
-+					perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_trace_header_size() + 
-+						ioam_trace_data_size(buffer.encaps[i].trace_type) * buffer.encaps[i].hop_nb;
-+				else
++				perdev_counters->hbh_opt_nb++;
++				if (buffer.encaps[i].trace.incremental)
 +					perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_trace_header_size();
-+
-+				dev_put(dev);
++				else
++					perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_trace_header_size() + 
++						ioam_trace_data_size(buffer.encaps[i].trace.type) * buffer.encaps[i].trace.hop_nb;
 +			}
-+			else if (buffer.encaps[i].mode == IOAM_OPTION_POT)
++			if (buffer.encaps[i].pot.enabled)
 +			{
-+				if (!ioam_valid_pot_type(buffer.encaps[i].pot_type))
++				if (!ioam_valid_pot_type(buffer.encaps[i].pot.type))
 +				{
++					dev_put(dev);
 +					clear_dev_counters(&hwrapper);
 +					return IOAM_ERR_POT;
 +				}
 +
-+				dev = dev_by_name(buffer.encaps[i].if_name);
-+				if (!dev)
-+				{
-+					clear_dev_counters(&hwrapper);
-+					return IOAM_ERR_IFUNEX;
-+				}
-+
-+				perdev_counters = dev_counters_get_or_create(&hwrapper, dev->ifindex);
-+				if (!perdev_counters)
++				if (buffer.encaps[i].pot.profile != IOAM_POT_PROFILE_0 
++					&& buffer.encaps[i].pot.profile != IOAM_POT_PROFILE_1)
 +				{
 +					dev_put(dev);
 +					clear_dev_counters(&hwrapper);
-+					return IOAM_ERR_ALLOC;
++					return IOAM_ERR_POTPFL;
 +				}
 +
-+				perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_pot_size(buffer.encaps[i].pot_type);
++				perdev_counters->hbh_opt_nb++;
++				perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_pot_size(buffer.encaps[i].pot.type);
 +			}
-+			else if (buffer.encaps[i].mode == IOAM_OPTION_E2E)
++			if (buffer.encaps[i].e2e.enabled)
 +			{
-+				if (!ioam_valid_e2e_type(buffer.encaps[i].e2e_type))
++				if (!ioam_valid_e2e_type(buffer.encaps[i].e2e.type))
 +				{
++					dev_put(dev);
 +					clear_dev_counters(&hwrapper);
 +					return IOAM_ERR_E2E;
 +				}
 +
-+				dev = dev_by_name(buffer.encaps[i].if_name);
-+				if (!dev)
++				if (buffer.encaps[i].e2e.inside_hbh)
 +				{
-+					clear_dev_counters(&hwrapper);
-+					return IOAM_ERR_IFUNEX;
++					perdev_counters->hbh_opt_nb++;
++					perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_e2e_size(buffer.encaps[i].e2e.type);
 +				}
-+
-+				perdev_counters = dev_counters_get_or_create(&hwrapper, dev->ifindex);
-+				if (!perdev_counters)
++				else
 +				{
-+					dev_put(dev);
-+					clear_dev_counters(&hwrapper);
-+					return IOAM_ERR_ALLOC;
++					perdev_counters->dst_opt_nb++;
++					perdev_counters->dst_len += ioam_ipv6opt_header_size() + ioam_e2e_size(buffer.encaps[i].e2e.type);
 +				}
-+
-+				perdev_counters->dst_len += ioam_ipv6opt_header_size() + ioam_e2e_size(buffer.encaps[i].e2e_type);
 +			}
-+			else
-+			{
-+				clear_dev_counters(&hwrapper);
-+				return IOAM_ERR_MODE;
-+			}
++			dev_put(dev);
 +		}
 +
 +		/*
 +		 * Second pass: store data
 +		 */
-+
 +		hash_init(net_namespace()->ipv6.h_namespaces);
 +
 +		/* Per namespace data */
@@ -1822,7 +1929,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +				goto free_registration;
 +
 +			hnode_ns->ns_id = cpu_to_be16(buffer.nss[i].ns_id);
-+			hnode_ns->ns_decap = (buffer.nss[i].ns_decap == IOAM_NS_DECAP_TRUE) ? true : false;
++			hnode_ns->ns_decap = (buffer.nss[i].ns_decap) ? true : false;
 +			hnode_ns->data = cpu_to_be32(buffer.nss[i].data);
 +
 +			INIT_HLIST_NODE(&hnode_ns->node);
@@ -1893,19 +2000,17 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +	int ret = misc_register(&ioam_miscdevice);
 +	if (ret < 0)
 +	{
-+		printk(KERN_ERR "Unable to register ioam device\n");
++		printk(KERN_ERR "Unable to register iOAM device");
 +		return ret;
 +	}
 +
-+	printk(KERN_INFO "ioam device is now registered\n");
++	printk(KERN_INFO "In-situ OAM (iOAM) IPv6 driver");
 +	return 0;
 +}
 +
 +static void __exit ioam_exit(void)
 +{
 +	ioam_cleanup();
-+
-+	printk(KERN_INFO "ioam device is now unregistered\n");
 +	misc_deregister(&ioam_miscdevice);
 +}
 +
@@ -1917,9 +2022,10 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ioam.c linux-
 +MODULE_DESCRIPTION("In-situ OAM (iOAM) IPv6 driver");
 +MODULE_SUPPORTED_DEVICE("ioam");
 +
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c linux-4.12_iOAM/net/ipv6/ip6_input.c
---- linux-4.12/net/ipv6/ip6_input.c	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/ip6_input.c	2019-05-18 14:55:36.484337124 +0200
+diff --git a/net/ipv6/ip6_input.c b/net/ipv6/ip6_input.c
+index 9ee208a..1ab7260 100644
+--- a/net/ipv6/ip6_input.c
++++ b/net/ipv6/ip6_input.c
 @@ -47,6 +47,10 @@
  #include <net/inet_ecn.h>
  #include <net/dst_metadata.h>
@@ -1931,7 +2037,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  int ip6_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
  {
  	void (*edemux)(struct sk_buff *skb);
-@@ -77,6 +81,9 @@
+@@ -77,6 +81,9 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
  	u32 pkt_len;
  	struct inet6_dev *idev;
  	struct net *net = dev_net(skb->dev);
@@ -1941,7 +2047,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  
  	if (skb->pkt_type == PACKET_OTHERHOST) {
  		kfree_skb(skb);
-@@ -192,6 +199,16 @@
+@@ -192,6 +199,16 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
  		hdr = ipv6_hdr(skb);
  	}
  
@@ -1958,7 +2064,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  	if (hdr->nexthdr == NEXTHDR_HOP) {
  		if (ipv6_parse_hopopts(skb) < 0) {
  			__IP6_INC_STATS(net, idev, IPSTATS_MIB_INHDRERRORS);
-@@ -200,6 +217,17 @@
+@@ -200,6 +217,17 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
  		}
  	}
  
@@ -1976,7 +2082,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  	rcu_read_unlock();
  
  	/* Must drop socket now because of tproxy. */
-@@ -229,6 +257,9 @@
+@@ -229,6 +257,9 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
  	int nexthdr;
  	bool raw;
  	bool have_final = false;
@@ -1986,7 +2092,7 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  
  	/*
  	 *	Parse extension headers
-@@ -281,8 +312,16 @@
+@@ -281,8 +312,16 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
  		    !xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb))
  			goto discard;
  
@@ -2003,28 +2109,3 @@ diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/ip6_input.c l
  			if (ipprot->flags & INET6_PROTO_FINAL) {
  				/* Not an extension header, most likely UDP
  				 * encapsulation. Use return value as nexthdr
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/Kconfig linux-4.12_iOAM/net/ipv6/Kconfig
---- linux-4.12/net/ipv6/Kconfig	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/Kconfig	2019-03-15 16:18:26.803711088 +0100
-@@ -339,4 +339,10 @@
- 
- 	  If unsure, say N.
- 
-+config IPV6_IOAM
-+	bool "IPv6: in-situ OAM (iOAM)"
-+	depends on IPV6
-+	---help---
-+	  Enable iOAM
-+
- endif # IPV6
-diff -burN -X exclude -X linux-4.12/.gitignore linux-4.12/net/ipv6/Makefile linux-4.12_iOAM/net/ipv6/Makefile
---- linux-4.12/net/ipv6/Makefile	2017-07-03 01:07:02.000000000 +0200
-+++ linux-4.12_iOAM/net/ipv6/Makefile	2019-03-15 16:13:29.177911121 +0100
-@@ -25,6 +25,7 @@
- ipv6-$(CONFIG_NETLABEL) += calipso.o
- ipv6-$(CONFIG_IPV6_SEG6_LWTUNNEL) += seg6_iptunnel.o
- ipv6-$(CONFIG_IPV6_SEG6_HMAC) += seg6_hmac.o
-+ipv6-$(CONFIG_IPV6_IOAM) += ioam.o
- 
- ipv6-objs += $(ipv6-y)
- 
