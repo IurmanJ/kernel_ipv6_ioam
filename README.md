@@ -1,18 +1,21 @@
 # kernel_ipv6_ioam
 
 Implementation of IOAM for IPv6 in the Linux Kernel, based on following drafts:
-- [In-situ OAM IPv6 Options, version 02](https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-options-02)
-- [Data Fields for In-situ OAM, version 05](https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-05)
+- [Deployment Considerations for In-situ OAM with IPv6 Options](https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-deployment-01) (version 01)
+- [In-situ OAM IPv6 Options](https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-options-02) (version 02)
+- [Data Fields for In-situ OAM](https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-05) (version 05)
 
 ### Patching the kernel
 
-In order to include IOAM, the kernel needs to be patched. Download the kernel version 4.12. Right now, there is only a patch for the kernel version 4.12. Patches for more recent kernel versions are coming.
+Patches are generated from [another repository where development takes place](https://github.com/IurmanJ/linux-ioam-ipv6/tree/4.12_ioam).
+
+In order to include IOAM, the kernel needs to be patched. Download the kernel version 4.12.
 ```
 wget https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.12.tar.xz
 tar -Jxvf linux-4.12.tar.xz
 ``` 
 
-Apply the patch to the kernel.
+Right now, there is only a patch for the kernel version 4.12. Patches for more recent kernel versions will come later. Apply the patch to the kernel.
 ```
 git clone https://github.com/IurmanJ/kernel_ipv6_ioam
 cd linux-4.12/
@@ -90,6 +93,13 @@ Example of output for one ping
 ```
 20:23:34.607156 IP6 (flowlabel 0x2cdd6, hlim 62, next-header Options (0) payload length: 104) db00::2 > db03::2: HBH (padn)(opt_type 0x20: len=34) [icmp6 sum ok] ICMP6, echo request, seq 1
 20:23:34.607219 IP6 (flowlabel 0xa1eae, hlim 63, next-header ICMPv6 (58) payload length: 64) db03::2 > db00::2: [icmp6 sum ok] ICMP6, echo reply, seq 1
+```
+
+Note that you could also use Wireshark if you want a more detailed view of packets, for example:
+```
+sudo tcpdump -i h_aramis1 -w aramis_in.pcap
+(...)
+wireshark aramis_in.pcap
 ```
 
 Stop and clean the topology when you're finished
