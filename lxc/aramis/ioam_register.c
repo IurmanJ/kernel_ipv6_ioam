@@ -10,20 +10,37 @@ int main()
 	int ret, fd;
 
 	// =============== Data structure ================
-	struct ioam_node node = {
+	struct ioam_node node =
+	{
 		.ioam_node_id = 3,
+
 		.if_nb = 2,
-		.ifs = {
-		  { .ioam_if_id = 31, .if_name = "h_aramis1", .ioam_if_mode = IOAM_IF_MODE_INGRESS },
-		  { .ioam_if_id = 32, .if_name = "h_aramis2", .ioam_if_mode = IOAM_IF_MODE_NONE },
+		.ifs =
+		{
+			{
+				.ioam_if_id = 31,
+				.if_name = "h_aramis1",
+				.ioam_if_mode = IOAM_IF_MODE_INGRESS
+			},
+			{
+				.ioam_if_id = 32,
+				.if_name = "h_aramis2",
+				.ioam_if_mode = IOAM_IF_MODE_NONE
+			}
 		},
+
 		.ns_nb = 2,
-		.nss = {
-		  { .ns_id = IOAM_DEFAULT_NS_ID, .ns_decap = 1 },
-		  { .ns_id = 123, .ns_decap = 1 },
-		},
-		.encap_nb = 0,
-		.encaps = { },
+		.nss =
+		{
+			{
+				.ns_id = IOAM_DEFAULT_NS_ID,
+				.ns_decap = true
+			},
+			{
+				.ns_id = 123,
+				.ns_decap = true
+			}
+		}
 	};
 	// ===============================================
 
