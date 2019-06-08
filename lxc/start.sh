@@ -1,7 +1,5 @@
 #!/bin/bash
 
-sudo sysctl -w net.ipv6.conf.all.forwarding=1
-
 # Create containers
 sudo lxc-create -n alpha -t ubuntu
 sudo lxc-create -n athos -t ubuntu

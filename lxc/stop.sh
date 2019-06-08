@@ -1,7 +1,5 @@
 #!/bin/bash
 
-sudo sysctl -w net.ipv6.conf.all.forwarding=0
-
 # Stop containers
 sudo lxc-stop -n alpha -k
 sudo lxc-stop -n athos -k
