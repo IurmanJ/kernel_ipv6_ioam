@@ -1049,7 +1049,7 @@ index 217e9ff..99bb511 100644
  ipv6-objs += $(ipv6-y)
  
 diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
-index b636f1da..42139c2 100644
+index b636f1da..d2e9144 100644
 --- a/net/ipv6/exthdrs.c
 +++ b/net/ipv6/exthdrs.c
 @@ -55,6 +55,11 @@
@@ -1158,7 +1158,7 @@ index b636f1da..42139c2 100644
  
  	if (!pskb_may_pull(skb, skb_transport_offset(skb) + 8) ||
  	    !pskb_may_pull(skb, (skb_transport_offset(skb) +
-@@ -700,6 +757,120 @@ static inline struct net *ipv6_skb_net(struct sk_buff *skb)
+@@ -700,6 +757,122 @@ static inline struct net *ipv6_skb_net(struct sk_buff *skb)
  	return skb_dst(skb) ? dev_net(skb_dst(skb)->dev) : dev_net(skb->dev);
  }
  
@@ -1183,13 +1183,15 @@ index b636f1da..42139c2 100644
 +	struct ioam_parsed_eh *parsed_eh;
 +
 +	/*
-+	 * Drop: if input dev is not an iOAM ingress interface or
-+	 *       if output dev is an iOAM ingress interface (this is a shortcut
-+	 *	    to say that the output dev can either be EGRESS or NONE,
-+	 *	    where NONE refers as a decap domain border in this case)
++	 * Drop:
++	 *  - if input dev is not an iOAM ingress interface
++	 *  OR
++	 *  - if output dev is *exclusively* an iOAM ingress interface
++	 *    (= shortcut for "could be INGRESS as long as it is combined with
++	 *    either EGRESS or NONE, where NONE refers to a domain border)
 +	 */
 +	if (!(skb->dev->ioam_if_mode & IOAM_IF_MODE_INGRESS)
-+		|| (skb_dst(skb)->dev->ioam_if_mode & IOAM_IF_MODE_INGRESS))
++		|| (skb_dst(skb)->dev->ioam_if_mode == IOAM_IF_MODE_INGRESS))
 +		return false;
 +
 +	net_ns = dev_net(skb->dev);
@@ -1279,7 +1281,7 @@ index b636f1da..42139c2 100644
  /* Router Alert as of RFC 2711 */
  
  static bool ipv6_hop_ra(struct sk_buff *skb, int optoff)
-@@ -786,6 +957,12 @@ static bool ipv6_hop_calipso(struct sk_buff *skb, int optoff)
+@@ -786,6 +959,12 @@ static bool ipv6_hop_calipso(struct sk_buff *skb, int optoff)
  }
  
  static const struct tlvtype_proc tlvprochopopt_lst[] = {
@@ -1292,7 +1294,7 @@ index b636f1da..42139c2 100644
  	{
  		.type	= IPV6_TLV_ROUTERALERT,
  		.func	= ipv6_hop_ra,
-@@ -804,6 +981,17 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
+@@ -804,6 +983,17 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
  int ipv6_parse_hopopts(struct sk_buff *skb)
  {
  	struct inet6_skb_parm *opt = IP6CB(skb);
@@ -1310,7 +1312,7 @@ index b636f1da..42139c2 100644
  
  	/*
  	 * skb_network_header(skb) is equal to skb->data, and
-@@ -819,12 +1007,30 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
+@@ -819,12 +1009,30 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
  	}
  
  	opt->flags |= IP6SKB_HOPBYHOP;
