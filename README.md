@@ -1,9 +1,9 @@
 # kernel_ipv6_ioam
 
 Implementation of IOAM for IPv6 in the Linux Kernel, based on following drafts:
-- [Deployment Considerations for In-situ OAM with IPv6 Options](https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-deployment-01) (version 01)
-- [In-situ OAM IPv6 Options](https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-options-02) (version 02)
-- [Data Fields for In-situ OAM](https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-05) (version 05)
+- [Deployment Considerations for In-situ OAM with IPv6 Options](https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-deployment-02) (version 02)
+- [In-situ OAM IPv6 Options](https://tools.ietf.org/html/draft-ietf-ippm-ioam-ipv6-options-00) (version 00)
+- [Data Fields for In-situ OAM](https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-06) (version 06)
 
 ### Patching the kernel
 
@@ -53,9 +53,9 @@ sudo apt-get install -y lxc lxctl lxc-templates util-linux
 ![Topology](./lxc/topology.png?raw=true "Topology")
 
 Three nodes are involved in the IOAM domain:
-- **Athos**: inserts IOAM headers as well as its own IOAM data (when required)
+- **Athos**: inserts or encapsulates IOAM headers, as well as its own IOAM data (when required)
 - **Porthos**: inserts its own IOAM data (when required)
-- **Aramis**: inserts its own IOAM data (when required) and removes IOAM headers
+- **Aramis**: inserts its own IOAM data (when required) and removes or decapsulates IOAM headers
 
 ### Testing IOAM
 
@@ -65,7 +65,7 @@ cd lxc/<node>/
 gcc ioam_register.c -o ioam_register
 ```
 
-Those registration programs are automatically invoked when starting the topology. You can modify them to include other IOAM options. If you do so, don't forget to (1) recompile and (2) unregister (ioam_unregister.c) then register again each IOAM node. Please see `/usr/include/linux/ioam.h` to learn how to modify the registration (each field is documented).
+Those registration programs are automatically invoked when starting the topology. You can modify them to include other IOAM options. If you do so, don't forget to (1) recompile and (2) unregister (ioam_unregister.c) then register again each IOAM node. Or simply restart the topology (much easier). Please see `/usr/include/linux/ioam.h` to learn how to modify the registration (each field is documented).
 
 Start the topology
 ```
@@ -87,12 +87,6 @@ Open another shell, enter either **Athos**, **Porthos** or **Aramis** and use tc
 ```
 sudo lxc-attach -n aramis
 sudo tcpdump -vv -l -i h_aramis1
-```
-
-Example of output for one ping
-```
-20:23:34.607156 IP6 (flowlabel 0x2cdd6, hlim 62, next-header Options (0) payload length: 104) db00::2 > db03::2: HBH (padn)(opt_type 0x20: len=34) [icmp6 sum ok] ICMP6, echo request, seq 1
-20:23:34.607219 IP6 (flowlabel 0xa1eae, hlim 63, next-header ICMPv6 (58) payload length: 64) db03::2 > db00::2: [icmp6 sum ok] ICMP6, echo reply, seq 1
 ```
 
 Note that you could also use Wireshark if you want a more detailed view of packets, for example:

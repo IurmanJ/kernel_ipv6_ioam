@@ -1,5 +1,5 @@
 diff --git a/include/linux/ipv6.h b/include/linux/ipv6.h
-index e1b4429..9c5c6e1 100644
+index e1b4429..123dcf0 100644
 --- a/include/linux/ipv6.h
 +++ b/include/linux/ipv6.h
 @@ -120,6 +120,9 @@ struct inet6_skb_parm {
@@ -12,8 +12,16 @@ index e1b4429..9c5c6e1 100644
  
  #define IP6SKB_XFRM_TRANSFORMED	1
  #define IP6SKB_FORWARDED	2
+@@ -128,6 +131,7 @@ struct inet6_skb_parm {
+ #define IP6SKB_FRAGMENTED      16
+ #define IP6SKB_HOPBYHOP        32
+ #define IP6SKB_L3SLAVE         64
++#define IP6SKB_IOAM           128
+ };
+ 
+ #if defined(CONFIG_NET_L3_MASTER_DEV)
 diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
-index 4ed952c..98a3a04 100644
+index 4ed952c..0d61510 100644
 --- a/include/linux/netdevice.h
 +++ b/include/linux/netdevice.h
 @@ -53,6 +53,10 @@
@@ -27,7 +35,7 @@ index 4ed952c..98a3a04 100644
  struct netpoll_info;
  struct device;
  struct phy_device;
-@@ -1646,6 +1650,16 @@ struct net_device {
+@@ -1646,6 +1650,17 @@ struct net_device {
  	char			name[IFNAMSIZ];
  	struct hlist_node	name_hlist;
  	char 			*ifalias;
@@ -37,6 +45,7 @@ index 4ed952c..98a3a04 100644
 +	u8			ioam_if_mode;
 +	int			ioam_pkt_freq;
 +	atomic_t		ioam_pkt_nb;
++	struct in6_addr		ioam_tun_dst;
 +	struct ioam_eh		*ioam_hbh;
 +	struct ioam_eh		*ioam_dst;
 +#endif
@@ -74,10 +83,10 @@ index a098d95..e828c2e 100644
  static inline int skb_tnl_header_len(const struct sk_buff *inner_skb)
 diff --git a/include/net/ioam.h b/include/net/ioam.h
 new file mode 100644
-index 0000000..d91ed8c
+index 0000000..6c1b390
 --- /dev/null
 +++ b/include/net/ioam.h
-@@ -0,0 +1,649 @@
+@@ -0,0 +1,755 @@
 +#ifndef _NET_IOAM_H
 +#define _NET_IOAM_H
 +
@@ -85,6 +94,7 @@ index 0000000..d91ed8c
 +#include <linux/kernel.h>
 +#include <linux/hashtable.h>
 +#include <net/ipv6.h>
++#include <net/addrconf.h>
 +#include <uapi/linux/ioam.h>
 +
 +#define IOAM_OPTION_PREALLOC 0 /* (Hop-by-Hop) pre-allocated trace option */
@@ -123,7 +133,7 @@ index 0000000..d91ed8c
 +#define IOAM_TRACE_FLAGS_O_BIT (1<<3)
 +#define IOAM_TRACE_FLAGS_L_BIT (1<<2)
 +#define IOAM_TRACE_FLAGS_A_BIT (1<<1)
-+#define IOAM_TRACE_FLAGS_I_BIT (1)
++#define IOAM_TRACE_FLAGS_I_BIT (1<<0)
 +
 +#define IOAM_POT_FLAGS_P_BIT (1<<7)
 +
@@ -168,7 +178,8 @@ index 0000000..d91ed8c
 +	u16  type;
 +	u16  write_offset;
 +	__be32 ns_data;
-+	void (*write_handler)(u16 type, __be32 ns_data, struct sk_buff *skb, u8 *buffer);
++	void (*write_handler)(u16 type, __be32 ns_data, 
++				struct sk_buff *skb, u8 *buffer);
 +};
 +
 +/**
@@ -226,8 +237,7 @@ index 0000000..d91ed8c
 +/**
 + * struct ioam_parsed_eh - Parsed data from generic iOAM Extension Header
 + *
-+ * @eh:		Offset & size of the iOAM Extension Header
-+ * @last_pad:	Offset & size of the last padding
++ * @size:	Size of the iOAM Extension Header
 + * @pad_size:	Total padding size of the iOAM Extension Header
 + * @decap_size:	Total size of iOAM data blocks to be removed
 + * @free_idx:	Next free index in the decapsulation array, which
@@ -243,8 +253,7 @@ index 0000000..d91ed8c
 + */
 +struct ioam_parsed_eh
 +{
-+	struct ioam_block eh;
-+	struct ioam_block last_pad;
++	u16 size;
 +	u8  pad_size;
 +
 +	u16 decap_size;
@@ -393,127 +402,218 @@ index 0000000..d91ed8c
 +	return NULL;
 +}
 +
-+static inline void ioam_hbh_encapsulate(struct sk_buff *skb)
++static inline void ioam_insert(struct sk_buff *skb)
 +{
++	struct net_device *dev = skb_dst(skb)->dev;
 +	struct ipv6hdr ipv6h_cpy;
 +	struct ipv6hdr *ipv6h = (struct ipv6hdr *) skb_network_header(skb);
-+	struct net_device *dev_out = skb_dst(skb)->dev;
-+	struct ioam_parsed_eh *parsed_eh = IP6CB(skb)->ioam;
-+	u8 *data, *poffset;
 +	u16 extra_room = 0;
-+	unsigned int tailpad_size = 0;
-+	unsigned int notailpad_size = 0;
-+	unsigned int new_tailpad_size = 0;
-+	unsigned int new_headpad_size = 0;
-+	u16 ipv6_payload_size = be16_to_cpu(ipv6h->payload_len);
++	u32 payload_len = be16_to_cpu(ipv6h->payload_len);
++	u32 new_payload_len;
++	u8 *hbh_ptr = NULL, *dst_ptr = NULL;
 +	int i;
-+	u8 tmp_buffer[2048];
-+
-+	if (ipv6h->nexthdr != NEXTHDR_HOP)
-+		extra_room = dev_out->ioam_hbh->buffer_size;
-+	else
-+	{
-+		if ((parsed_eh->last_pad.offset + parsed_eh->last_pad.size) == (parsed_eh->eh.offset + parsed_eh->eh.size))
-+			tailpad_size = parsed_eh->last_pad.size;
-+		else
-+			tailpad_size = 0;
-+
-+		notailpad_size = parsed_eh->eh.size - tailpad_size;
-+		new_headpad_size = (4 - (notailpad_size % 4)) % 4;
-+		new_tailpad_size = ((8 - ((notailpad_size + dev_out->ioam_hbh->ioam_size) % 8)) % 8) - new_headpad_size;
-+		extra_room = dev_out->ioam_hbh->ioam_size - tailpad_size + new_headpad_size + new_tailpad_size;
-+	}
++	struct ioam_eh_opt *opt;
 +
 +	/*
-+	 * Cancel insertion if either it overflows IPv6 max length or 
-+	 * buffer cannot grow
++	 * Don't insert IOAM headers if there is already a Hop-by-Hop Option
++	 * or a Destination Option
 +	 */
-+	if (ipv6_payload_size + extra_room > dev_out->mtu
-+			|| ipv6_payload_size + extra_room >= (1 << 16)
-+			|| skb_cow_head(skb, extra_room))
++	if ((IP6CB(skb)->flags & IP6SKB_HOPBYHOP) 
++		|| IP6CB(skb)->dst0
++		|| IP6CB(skb)->dst1) {
++
 +		return;
++	}
++
++	if (dev->ioam_hbh)
++		extra_room += dev->ioam_hbh->buffer_size;
++	if (dev->ioam_dst)
++		extra_room += dev->ioam_dst->buffer_size;
++
++	/*
++	 * Cancel insertion if either:
++	 *  - it exceeds the MTU or IPv6 max length
++	 *  - buffer cannot grow
++	 */
++	new_payload_len = payload_len + extra_room;
++	if (new_payload_len + sizeof(struct ipv6hdr) > dev->mtu
++		|| new_payload_len > IPV6_MAXPLEN
++		|| skb_cow_head(skb, extra_room + LL_RESERVED_SPACE(dev))) {
++
++		return;
++	}
 +
 +	/* 
-+	 * Copy and remove IPv6 header from packet
++	 * Copy and pull IPv6 header
 +	 */
 +	memcpy(&ipv6h_cpy, ipv6h, sizeof(struct ipv6hdr));
 +	skb_pull(skb, sizeof(struct ipv6hdr));
-+
-+	if (ipv6h_cpy.nexthdr != NEXTHDR_HOP)
-+	{
-+		skb_postpull_rcsum(skb, skb_network_header(skb),
-+				   sizeof(struct ipv6hdr));
-+
-+		/*
-+		 * Push new Hop-by-hop with iOAM
-+		 */
-+		data = skb_push(skb, extra_room);
-+		skb_reset_network_header(skb);
-+		memcpy(data, dev_out->ioam_hbh->buffer, dev_out->ioam_hbh->buffer_size);
-+		data[0] = ipv6h_cpy.nexthdr;
-+
-+		poffset = data + dev_out->ioam_hbh->header_size;
-+		skb_postpush_rcsum(skb, skb_network_header(skb), extra_room);
-+	}
-+	else
-+	{
-+		/*
-+		 * Pull Hop-by-Hop
-+		 */
-+		memcpy(tmp_buffer, skb->data, notailpad_size);
-+		skb_pull(skb, parsed_eh->eh.size);
-+
-+		skb_postpull_rcsum(skb, skb_network_header(skb),
-+				   sizeof(struct ipv6hdr) + parsed_eh->eh.size);
-+
-+		/*
-+		 * Push back Hop-by-Hop with aligned iOAM data, without old
-+		 * padding which is replaced by new padding if any
-+		 */
-+		data = skb_push(skb, notailpad_size + new_headpad_size + dev_out->ioam_hbh->ioam_size + new_tailpad_size);
-+		skb_reset_network_header(skb);
-+		memcpy(data, tmp_buffer, notailpad_size);
-+		data[1] = (notailpad_size + new_headpad_size + dev_out->ioam_hbh->ioam_size + new_tailpad_size - 8) >> 3;
-+		data += notailpad_size;
-+		memcpy(data, dev_net(dev_out)->ipv6.padding[new_headpad_size], new_headpad_size);
-+		data += new_headpad_size;
-+		memcpy(data, &dev_out->ioam_hbh->buffer[dev_out->ioam_hbh->ioam_offset], dev_out->ioam_hbh->ioam_size);
-+		poffset = data;
-+		data += dev_out->ioam_hbh->ioam_size;
-+		memcpy(data, dev_net(dev_out)->ipv6.padding[new_tailpad_size], new_tailpad_size);
-+
-+		skb_postpush_rcsum(skb, skb_network_header(skb), notailpad_size + new_headpad_size + dev_out->ioam_hbh->ioam_size + new_tailpad_size);
-+	}
++	skb_postpull_rcsum(skb, skb_network_header(skb),
++			sizeof(struct ipv6hdr));
 +
 +	/*
-+	 * Push back IPv6 header in packet
++	 * Push IOAM Hop-by-Hop and Destination, if any
++	 */
++	if (dev->ioam_dst) {
++		dst_ptr = skb_push(skb, dev->ioam_dst->buffer_size);
++		memcpy(dst_ptr, dev->ioam_dst->buffer, 
++				dev->ioam_dst->buffer_size);
++
++		dst_ptr[0] = ipv6h_cpy.nexthdr;
++		dst_ptr += dev->ioam_dst->header_size;
++	}
++	if (dev->ioam_hbh) {
++		hbh_ptr = skb_push(skb, dev->ioam_hbh->buffer_size);
++		memcpy(hbh_ptr, dev->ioam_hbh->buffer, 
++				dev->ioam_hbh->buffer_size);
++
++		hbh_ptr[0] = dev->ioam_dst ? NEXTHDR_DEST : ipv6h_cpy.nexthdr;
++		hbh_ptr += dev->ioam_hbh->header_size;
++	}
++	skb_reset_transport_header(skb);
++
++	/*
++	 * Push back IPv6 header
 +	 */
 +	ipv6h = (struct ipv6hdr *) skb_push(skb, sizeof(struct ipv6hdr));
-+	skb_reset_network_header(skb);
 +	memcpy(ipv6h, &ipv6h_cpy, sizeof(struct ipv6hdr));
-+	ipv6h->nexthdr = NEXTHDR_HOP;
-+	ipv6h->payload_len = cpu_to_be16(ipv6_payload_size + extra_room);
++	ipv6h->nexthdr = dev->ioam_hbh ? NEXTHDR_HOP : NEXTHDR_DEST;
++	ipv6h->payload_len = cpu_to_be16((u16) new_payload_len);
 +
-+	skb_postpush_rcsum(skb, skb_network_header(skb), sizeof(struct ipv6hdr));
++	skb_reset_network_header(skb);
++	skb_postpush_rcsum(skb, skb_network_header(skb), 
++				sizeof(struct ipv6hdr) + extra_room);
 +
 +	/*
-+	 * Insert node data for each option
++	 * Insert IOAM data for each Hop-by-Hop/Destination option, if any
 +	 */
-+	for(i = 0; i < dev_out->ioam_hbh->ioam_opt_nb; i++)
-+	{
-+		if (!dev_out->ioam_hbh->ioam_opt[i]->write_handler)
-+			continue;
++	if (dev->ioam_hbh) {
++		for(i = 0; i < dev->ioam_hbh->ioam_opt_nb; i++) {
++			opt = dev->ioam_hbh->ioam_opt[i];
 +
-+		dev_out->ioam_hbh->ioam_opt[i]->write_handler(dev_out->ioam_hbh->ioam_opt[i]->type, dev_out->ioam_hbh->ioam_opt[i]->ns_data, skb, poffset + dev_out->ioam_hbh->ioam_opt[i]->write_offset);
++			if (!opt->write_handler)
++				continue;
++
++			opt->write_handler(opt->type, opt->ns_data, skb, 
++						hbh_ptr + opt->write_offset);
++		}
++	}
++	if (dev->ioam_dst) {
++		for(i = 0; i < dev->ioam_dst->ioam_opt_nb; i++) {
++			opt = dev->ioam_dst->ioam_opt[i];
++
++			if (!opt->write_handler)
++				continue;
++
++			opt->write_handler(opt->type, opt->ns_data, skb, 
++						dst_ptr + opt->write_offset);
++		}
 +	}
 +}
 +
-+static inline void ioam_dst_encapsulate(struct sk_buff *skb)
++static inline void ioam_encapsulate(struct sk_buff *skb)
 +{
-+	//TODO
++	struct net_device *dev = skb_dst(skb)->dev;
++	u8 *hbh_ptr = NULL, *dst_ptr = NULL;
++	struct ipv6hdr *hdr, *inner_hdr;
++	struct ioam_eh_opt *opt;
++	u32 hdr_payload_len;
++	u16 extra_room;
++	int i;
++
++	extra_room = sizeof(struct ipv6hdr);
++	if (dev->ioam_hbh)
++		extra_room += dev->ioam_hbh->buffer_size;
++	if (dev->ioam_dst)
++		extra_room += dev->ioam_dst->buffer_size;
++
++	inner_hdr = ipv6_hdr(skb);
++	hdr_payload_len = be16_to_cpu(inner_hdr->payload_len) + extra_room;
++
++	/*
++	 * Cancel encapsulation if either:
++	 *  - it exceeds the MTU or IPv6 max length
++	 *  - buffer cannot grow
++	 */
++	if (hdr_payload_len + sizeof(struct ipv6hdr) > dev->mtu
++		|| hdr_payload_len > IPV6_MAXPLEN
++		|| skb_cow_head(skb, extra_room + LL_RESERVED_SPACE(dev))) {
++
++		return;
++	}
++
++	/*
++	 * Push IOAM Hop-by-Hop and Destination, if any
++	 */
++	if (dev->ioam_dst) {
++		dst_ptr = skb_push(skb, dev->ioam_dst->buffer_size);
++		memcpy(dst_ptr, dev->ioam_dst->buffer, 
++				dev->ioam_dst->buffer_size);
++
++		dst_ptr[0] = NEXTHDR_IPV6;
++		dst_ptr += dev->ioam_dst->header_size;
++	}
++	if (dev->ioam_hbh) {
++		hbh_ptr = skb_push(skb, dev->ioam_hbh->buffer_size);
++		memcpy(hbh_ptr, dev->ioam_hbh->buffer, 
++				dev->ioam_hbh->buffer_size);
++
++		hbh_ptr[0] = dev->ioam_dst ? NEXTHDR_DEST : NEXTHDR_IPV6;
++		hbh_ptr += dev->ioam_hbh->header_size;
++	}
++	skb_reset_transport_header(skb);
++
++	/*
++	 * Push Outer IPv6 header
++	 */
++	hdr = (struct ipv6hdr *) skb_push(skb, sizeof(struct ipv6hdr));
++	skb_reset_network_header(skb);
++
++	ip6_flow_hdr(hdr, ip6_tclass(ip6_flowinfo(inner_hdr)),
++		     ip6_flowlabel(inner_hdr));
++	hdr->nexthdr = dev->ioam_hbh ? NEXTHDR_HOP : NEXTHDR_DEST;
++	hdr->payload_len = cpu_to_be16((u16) hdr_payload_len);
++	hdr->hop_limit = inner_hdr->hop_limit;
++
++	/*
++	 * Select source address and set tunnel destination address
++	 */
++	ipv6_dev_get_saddr(dev_net(dev), dev, &dev->ioam_tun_dst, 
++				IPV6_PREFER_SRC_PUBLIC, &hdr->saddr);
++	memcpy(&hdr->daddr, &dev->ioam_tun_dst, sizeof(struct in6_addr));
++	//TODO reprocess "dst" (even though the tunnel should follow the same path)
++
++	skb_postpush_rcsum(skb, skb_network_header(skb), extra_room);
++	skb_set_inner_protocol(skb, skb->protocol);
++
++	/*
++	 * Insert IOAM data for each Hop-by-Hop/Destination option, if any
++	 */
++	if (dev->ioam_hbh) {
++		for(i = 0; i < dev->ioam_hbh->ioam_opt_nb; i++) {
++			opt = dev->ioam_hbh->ioam_opt[i];
++
++			if (!opt->write_handler)
++				continue;
++
++			opt->write_handler(opt->type, opt->ns_data, skb, 
++						hbh_ptr + opt->write_offset);
++		}
++	}
++	if (dev->ioam_dst) {
++		for(i = 0; i < dev->ioam_dst->ioam_opt_nb; i++) {
++			opt = dev->ioam_dst->ioam_opt[i];
++
++			if (!opt->write_handler)
++				continue;
++
++			opt->write_handler(opt->type, opt->ns_data, skb, 
++						dst_ptr + opt->write_offset);
++		}
++	}
 +}
 +
-+static inline void ioam_hbh_decapsulate(struct sk_buff *skb)
++static inline void ioam_decapsulate(struct sk_buff *skb)
 +{
 +	struct ioam_parsed_eh *parsed_eh = IP6CB(skb)->ioam;
 +	struct ipv6hdr *ipv6h = (struct ipv6hdr *) skb_network_header(skb);
@@ -522,7 +622,7 @@ index 0000000..d91ed8c
 +	int i, offset, jump;
 +	u16 ipv6_payload_size = be16_to_cpu(ipv6h->payload_len);
 +	u16 size, tailpad_size;
-+	u8 tmp_buffer[2048];
++	u8 tmp_buffer[1024];
 +
 +	/* 
 +	 * Copy and remove IPv6 header from packet
@@ -530,35 +630,35 @@ index 0000000..d91ed8c
 +	memcpy(&ipv6h_cpy, ipv6h, sizeof(struct ipv6hdr));
 +	data = skb_pull(skb, sizeof(struct ipv6hdr));
 +
-+	if ((parsed_eh->decap_size + parsed_eh->pad_size) == (parsed_eh->eh.size - 2))
++	if ((parsed_eh->decap_size + parsed_eh->pad_size) == (parsed_eh->size - 2))
 +	{
 +		/*
 +		 * Remove entire Hop-by-Hop from packet
 +		 */
-+		skb_pull(skb, parsed_eh->eh.size);
++		skb_pull(skb, parsed_eh->size);
 +		skb_reset_transport_header(skb);
 +
 +		ipv6h_cpy.nexthdr = data[0];
-+		ipv6h_cpy.payload_len = cpu_to_be16(ipv6_payload_size - parsed_eh->eh.size);
++		ipv6h_cpy.payload_len = cpu_to_be16(ipv6_payload_size - parsed_eh->size);
 +
 +		skb_postpull_rcsum(skb, skb_network_header(skb),
-+				   sizeof(struct ipv6hdr) + parsed_eh->eh.size);
++				   sizeof(struct ipv6hdr) + parsed_eh->size);
 +	}
 +	else
 +	{
 +		/* 
 +		 * Copy and remove Hop-by-Hop from packet
 +		 */
-+		memcpy(tmp_buffer, skb_transport_header(skb), parsed_eh->eh.size);
-+		skb_pull(skb, parsed_eh->eh.size);
++		memcpy(tmp_buffer, skb_transport_header(skb), parsed_eh->size);
++		skb_pull(skb, parsed_eh->size);
 +
-+		size = parsed_eh->eh.size - parsed_eh->decap_size;
++		size = parsed_eh->size - parsed_eh->decap_size;
 +		tailpad_size = (8 - (size % 8)) % 8;
 +		size += tailpad_size;
-+		ipv6h_cpy.payload_len = cpu_to_be16(ipv6_payload_size - parsed_eh->eh.size + size);
++		ipv6h_cpy.payload_len = cpu_to_be16(ipv6_payload_size - parsed_eh->size + size);
 +
 +		skb_postpull_rcsum(skb, skb_network_header(skb),
-+				   sizeof(struct ipv6hdr) + parsed_eh->eh.size);
++				   sizeof(struct ipv6hdr) + parsed_eh->size);
 +
 +		/*
 +		 * Push back new & resized Hop-by-Hop
@@ -590,9 +690,9 @@ index 0000000..d91ed8c
 +		 * it should be rewritten back too (special case not handled by
 +		 * the above loop)
 +		 */
-+		if (offset < parsed_eh->eh.size)
++		if (offset < parsed_eh->size)
 +		{
-+			jump = parsed_eh->eh.size - offset;
++			jump = parsed_eh->size - offset;
 +			memcpy(data, &tmp_buffer[offset], jump);
 +			data += jump;
 +		}
@@ -620,11 +720,6 @@ index 0000000..d91ed8c
 +	skb_postpush_rcsum(skb, skb_network_header(skb), sizeof(struct ipv6hdr));
 +}
 +
-+static inline void ioam_dst_decapsulate(struct sk_buff *skb)
-+{
-+	//TODO
-+}
-+
 +static inline void ioam_fill_trace_data_node(u16 type, __be32 ns_data, struct sk_buff *skb, u8 *buffer)
 +{
 +	u8 raw_u8;
@@ -635,14 +730,17 @@ index 0000000..d91ed8c
 +
 +	if (type & IOAM_TRACE_TYPE_0) {
 +		raw_u8 = ipv6_hdr(skb)->hop_limit - 1;
-+		raw_u32 = ioam_node_id(dev_net(skb->dev)) | (raw_u8 << 24);
++		raw_u32 = ioam_node_id(dev_net(skb_dst(skb)->dev)) | (raw_u8 << 24);
 +
 +		*(__be32 *)data = cpu_to_be32(raw_u32);
 +		data += IOAM_TRACE_TYPE_0_SIZE;
 +
 +	}
 +	if (type & IOAM_TRACE_TYPE_1) {
-+		raw_u32 = skb->dev->ioam_if_id << 16;
++		if (skb->dev)
++			raw_u32 = skb->dev->ioam_if_id << 16;
++		else
++			raw_u32 = (u32)0xffff << 16;
 +		raw_u32 |= skb_dst(skb)->dev->ioam_if_id;
 +
 +		*(__be32 *)data = cpu_to_be32(raw_u32);
@@ -660,8 +758,12 @@ index 0000000..d91ed8c
 +	if (type & IOAM_TRACE_TYPE_3) {
 +		if (!skb->tstamp)
 +			*(__be32 *)data = 0xffffffff;
-+		else
++		else {
++			if (!(type & IOAM_TRACE_TYPE_2))
++				skb_get_timestamp(skb, &ts);
++
 +			*(__be32 *)data = cpu_to_be32((u32) ts.tv_usec);
++		}
 +		data += IOAM_TRACE_TYPE_3_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_4) {
@@ -674,16 +776,25 @@ index 0000000..d91ed8c
 +		data += IOAM_TRACE_TYPE_5_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_6) {
-+		/*if (skb->sk)
-+			printk(KERN_INFO "iOAM XXX (ioam_fill_trace_data_node) queue %u, current length = %u (receive queue size = %u)\n", skb->queue_mapping, skb_queue_len(&skb->sk->sk_write_queue), skb_queue_len(&skb->sk->sk_receive_queue));
-+		else
-+			printk(KERN_INFO "iOAM XXX (ioam_fill_trace_data_node) queue %u, skb->sk is null\n", skb->queue_mapping);
-+		struct netdev_queue *queue = skb_get_tx_queue(skb->dev, skb);
-+		if (!queue || !queue->qdisc)
-+			printk(KERN_INFO "iOAM XXX (ioam_fill_trace_data_node) queue or qdisc is null\n");
-+		else
-+			printk(KERN_INFO "iOAM XXX (ioam_fill_trace_data_node) qdisc length = %u\n", queue->qdisc->q.qlen);*/
-+		*(__be32 *)data = 0xffffffff;
++		//TODO check if type is VETH and use the same logic as enqueue_to_backlog for getting queue length (to make it available for containers)
++		if (skb_dst(skb)->dev->priv_flags & IFF_NO_QUEUE) {
++			*(__be32 *)data = 0xffffffff;
++		}
++		else {
++			/*if (skb->sk)
++				printk(KERN_INFO "iOAM XXX (ioam_fill_trace_data_node) queue %u, current length = %u (receive queue size = %u)\n", skb->queue_mapping, skb_queue_len(&skb->sk->sk_write_queue), skb_queue_len(&skb->sk->sk_receive_queue));
++			else
++				printk(KERN_INFO "iOAM XXX (ioam_fill_trace_data_node) queue %u, skb->sk is null\n", skb->queue_mapping);*/
++			struct netdev_queue *queue = skb_get_tx_queue(skb_dst(skb)->dev, skb);
++			if (queue && queue->qdisc)
++				*(__be32 *)data = cpu_to_be32(queue->qdisc->q.qlen);
++			else
++				*(__be32 *)data = 0xffffffff;
++
++			/*if (skb_dst(skb)->dev->qdisc && skb_dst(skb)->dev->qdisc->q.qlen > 0)
++				printk(KERN_INFO "dev (%s) qdisc length = %u", skb_dst(skb)->dev->name, skb_dst(skb)->dev->qdisc->q.qlen);*/
++		}
++
 +		data += IOAM_TRACE_TYPE_6_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_7) {
@@ -693,13 +804,17 @@ index 0000000..d91ed8c
 +	}
 +	if (type & IOAM_TRACE_TYPE_8) {
 +		raw_u8 = ipv6_hdr(skb)->hop_limit - 1;
-+		raw_u64 = ((u64)raw_u8 << 56) | ((u64)ioam_node_id(dev_net(skb->dev)) << 32);
++		raw_u64 = ((u64)raw_u8 << 56) | ((u64)ioam_node_id(dev_net(skb_dst(skb)->dev)) << 32);
 +
 +		*(__be64 *)data = cpu_to_be64(raw_u64);
 +		data += IOAM_TRACE_TYPE_8_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_9) {
-+		raw_u64 = ((u64)skb->dev->ioam_if_id << 32) | skb_dst(skb)->dev->ioam_if_id;
++		if (skb->dev)
++			raw_u64 = (u64)skb->dev->ioam_if_id << 32;
++		else
++			raw_u64 = (u64)0xffffffff << 32;
++		raw_u64 |= skb_dst(skb)->dev->ioam_if_id;
 +
 +		*(__be64 *)data = cpu_to_be64(raw_u64);
 +		data += IOAM_TRACE_TYPE_9_SIZE;
@@ -769,10 +884,10 @@ index 46444f8..7dc2d97 100644
  
 diff --git a/include/uapi/linux/ioam.h b/include/uapi/linux/ioam.h
 new file mode 100644
-index 0000000..1095bd5
+index 0000000..e7f5f10
 --- /dev/null
 +++ b/include/uapi/linux/ioam.h
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,250 @@
 +#ifndef _UAPI_LINUX_IOAM_H
 +#define _UAPI_LINUX_IOAM_H
 +
@@ -844,8 +959,6 @@ index 0000000..1095bd5
 + * struct ioam_e2e_option - iOAM Edge-to-Edge (E2E) option
 + *
 + * @type:  	E2E option types required
-+ * @inside_hbh:	Carried as an Hop-by-Hop option
-+ *		(default: false = carried as a Destination option)
 + * @enabled:	Take this option into account (default: false)
 + * 
 + * This structure represents an iOAM Edge-to-Edge (E2E) option
@@ -859,7 +972,6 @@ index 0000000..1095bd5
 +	__u16 type;
 +
 +	//TODO "packet group" for bits 0-1 of type field
-+	boolean  inside_hbh; //default: false (= carried as destination option)
 +	boolean  enabled;
 +};
 +
@@ -939,18 +1051,22 @@ index 0000000..1095bd5
 + *		    -egress: only outgoing iOAM traffic
 + *		  Note: an iOAM interface can be both (ingress/egress)
 + * @if_name:	  Real name of the interface
++ * @encap_dst:	  IPv6 address of the tunnel destination, as a string,
++ *		  used with the encapsulation mode
 + *
 + * This structure represents an iOAM interface.
 + */
 +struct ioam_interface
 +{
 +	__u16 ioam_if_id;
++
 +#define IOAM_IF_MODE_NONE    0
 +#define IOAM_IF_MODE_INGRESS 1
 +#define IOAM_IF_MODE_EGRESS  2
 +	__u8  ioam_if_mode;
 +
 +	char  if_name[IFNAMSIZ];
++	char  encap_dst[40];//INET6_ADDRSTRLEN
 +};
 +
 +/**
@@ -980,8 +1096,8 @@ index 0000000..1095bd5
 +	unsigned int encap_nb;
 +	unsigned int encap_freq;
 +
-+#define IOAM_MAX_IF_NB 8
-+#define IOAM_MAX_NS_NB 16
++#define IOAM_MAX_IF_NB 2
++#define IOAM_MAX_NS_NB 4
 +	/* Node's iOAM interfaces */
 +	struct ioam_interface ifs[IOAM_MAX_IF_NB];
 +
@@ -1017,7 +1133,8 @@ index 0000000..1095bd5
 +#define IOAM_ERR_E2E	14 /* Unknown E2E type */
 +#define IOAM_ERR_POTPFL 15 /* Unknown POT Profile */
 +#define IOAM_ERR_FREQ	16 /* Incorrect frequency (must be > 0) */
-+#define IOAM_ERR_IFUNEX 17 /* Unexpected network device error */
++#define IOAM_ERR_ADDR	17 /* Incorrect tunnel desination (IPv6 address) */
++#define IOAM_ERR_IFUNEX 18 /* Unexpected network device error */
 +
 +#endif
 +
@@ -1049,7 +1166,7 @@ index 217e9ff..99bb511 100644
  ipv6-objs += $(ipv6-y)
  
 diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
-index b636f1da..d2e9144 100644
+index b636f1da..cbaf6c5 100644
 --- a/net/ipv6/exthdrs.c
 +++ b/net/ipv6/exthdrs.c
 @@ -55,6 +55,11 @@
@@ -1064,43 +1181,38 @@ index b636f1da..d2e9144 100644
  /*
   *	Parsing tlv encoded headers.
   *
-@@ -107,6 +112,11 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
+@@ -107,6 +112,10 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
  	int off = skb_network_header_len(skb);
  	int len = (skb_transport_header(skb)[1] + 1) << 3;
  	int padlen = 0;
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
 +	struct ioam_parsed_eh *parsed_eh = IP6CB(skb)->ioam;
-+	parsed_eh->eh.offset = off;
-+	parsed_eh->eh.size = len;
++	parsed_eh->size = len;
 +#endif
  
  	if (skb_transport_offset(skb) + len > skb_headlen(skb))
  		goto bad;
-@@ -122,6 +132,11 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
+@@ -122,6 +131,9 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
  		case IPV6_TLV_PAD1:
  			optlen = 1;
  			padlen++;
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+			parsed_eh->last_pad.offset = off;
-+			parsed_eh->last_pad.size = 1;
 +			parsed_eh->pad_size++;
 +#endif
  			if (padlen > 7)
  				goto bad;
  			break;
-@@ -133,6 +148,11 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
+@@ -133,6 +145,9 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
  			 * See also RFC 4942, Section 2.1.9.5.
  			 */
  			padlen += optlen;
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+			parsed_eh->last_pad.offset = off;
-+			parsed_eh->last_pad.size = optlen;
 +			parsed_eh->pad_size += optlen;
 +#endif
  			if (padlen > 7)
  				goto bad;
  			/* RFC 4942 recommends receiving hosts to
-@@ -180,6 +200,29 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
+@@ -180,6 +195,31 @@ static bool ip6_parse_tlv(const struct tlvtype_proc *procs, struct sk_buff *skb)
    Destination options header.
   *****************************/
  
@@ -1110,8 +1222,8 @@ index b636f1da..d2e9144 100644
 + * In-situ OAM IPv6 Options (draft, version 02)
 + * (https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-options-02)
 + *
-+ * Data Fields for In-situ OAM (draft, version 05)
-+ * (https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-05)
++ * Data Fields for In-situ OAM (draft, version 06)
++ * (https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-06)
 + */
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
 +static bool ipv6_dest_ioam(struct sk_buff *skb, int optoff)
@@ -1122,6 +1234,8 @@ index b636f1da..d2e9144 100644
 +	if (ioam_type != IOAM_OPTION_E2E)
 +		return false;
 +
++	IP6CB(skb)->flags |= IP6SKB_IOAM;
++
 +	//TODO
 +	return true;
 +}
@@ -1130,7 +1244,7 @@ index b636f1da..d2e9144 100644
  #if IS_ENABLED(CONFIG_IPV6_MIP6)
  static bool ipv6_dest_hao(struct sk_buff *skb, int optoff)
  {
-@@ -244,6 +287,12 @@ static bool ipv6_dest_hao(struct sk_buff *skb, int optoff)
+@@ -244,6 +284,12 @@ static bool ipv6_dest_hao(struct sk_buff *skb, int optoff)
  #endif
  
  static const struct tlvtype_proc tlvprocdestopt_lst[] = {
@@ -1143,22 +1257,19 @@ index b636f1da..d2e9144 100644
  #if IS_ENABLED(CONFIG_IPV6_MIP6)
  	{
  		.type	= IPV6_TLV_HAO,
-@@ -260,6 +309,14 @@ static int ipv6_destopt_rcv(struct sk_buff *skb)
+@@ -260,6 +306,11 @@ static int ipv6_destopt_rcv(struct sk_buff *skb)
  	__u16 dstbuf;
  #endif
  	struct dst_entry *dst = skb_dst(skb);
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+	struct ioam_parsed_eh *parsed_eh = opt->ioam;
-+	parsed_eh->pad_size = 0;
-+	parsed_eh->decap_size = 0;
-+	parsed_eh->free_idx = 0;
-+	parsed_eh->last_pad.offset = 0;
-+	parsed_eh->last_pad.size = 0;
++	struct ioam_parsed_eh parsed_eh;
++	parsed_eh.decap_size = 0;
++	opt->ioam = &parsed_eh;
 +#endif
  
  	if (!pskb_may_pull(skb, skb_transport_offset(skb) + 8) ||
  	    !pskb_may_pull(skb, (skb_transport_offset(skb) +
-@@ -700,6 +757,122 @@ static inline struct net *ipv6_skb_net(struct sk_buff *skb)
+@@ -700,6 +751,109 @@ static inline struct net *ipv6_skb_net(struct sk_buff *skb)
  	return skb_dst(skb) ? dev_net(skb_dst(skb)->dev) : dev_net(skb->dev);
  }
  
@@ -1168,8 +1279,8 @@ index b636f1da..d2e9144 100644
 + * In-situ OAM IPv6 Options (draft, version 02)
 + * (https://tools.ietf.org/html/draft-ioametal-ippm-6man-ioam-ipv6-options-02)
 + *
-+ * Data Fields for In-situ OAM (draft, version 05)
-+ * (https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-05)
++ * Data Fields for In-situ OAM (draft, version 06)
++ * (https://tools.ietf.org/html/draft-ietf-ippm-ioam-data-06)
 + */
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
 +static bool ipv6_hop_ioam(struct sk_buff *skb, int optoff)
@@ -1193,6 +1304,8 @@ index b636f1da..d2e9144 100644
 +	if (!(skb->dev->ioam_if_mode & IOAM_IF_MODE_INGRESS)
 +		|| (skb_dst(skb)->dev->ioam_if_mode == IOAM_IF_MODE_INGRESS))
 +		return false;
++
++	IP6CB(skb)->flags |= IP6SKB_IOAM;
 +
 +	net_ns = dev_net(skb->dev);
 +	opth = skb_network_header(skb) + optoff;
@@ -1255,21 +1368,6 @@ index b636f1da..d2e9144 100644
 +	case IOAM_OPTION_POT:
 +		//TODO
 +		break;
-+	case IOAM_OPTION_E2E:
-+		/*
-+		 * Allow Edge-to-Edge option to be carried as Hop-by-Hop option
-+		 *
-+		 * A node considers itself as the destination if either:
-+		 *  1) It is the destination
-+		 *  2) It must decapsulate the IOAM namespace (= penultimate
-+		 *     node); next node is assumed to be the destination
-+		 *
-+		 * Otherwise, it is ignored
-+		 */
-+		if (skb->dev == skb_dst(skb)->dev || ns->ns_decap) {
-+			//TODO
-+		}
-+		break;
 +	default:
 +		return false;
 +	}
@@ -1281,7 +1379,7 @@ index b636f1da..d2e9144 100644
  /* Router Alert as of RFC 2711 */
  
  static bool ipv6_hop_ra(struct sk_buff *skb, int optoff)
-@@ -786,6 +959,12 @@ static bool ipv6_hop_calipso(struct sk_buff *skb, int optoff)
+@@ -786,6 +940,12 @@ static bool ipv6_hop_calipso(struct sk_buff *skb, int optoff)
  }
  
  static const struct tlvtype_proc tlvprochopopt_lst[] = {
@@ -1294,7 +1392,7 @@ index b636f1da..d2e9144 100644
  	{
  		.type	= IPV6_TLV_ROUTERALERT,
  		.func	= ipv6_hop_ra,
-@@ -804,6 +983,17 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
+@@ -804,6 +964,16 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
  int ipv6_parse_hopopts(struct sk_buff *skb)
  {
  	struct inet6_skb_parm *opt = IP6CB(skb);
@@ -1302,17 +1400,16 @@ index b636f1da..d2e9144 100644
 +	struct net_device *dev_in = skb->dev;
 +	struct net_device *dev_out = skb_dst(skb)->dev;
 +
-+	struct ioam_parsed_eh *parsed_eh = opt->ioam;
-+	parsed_eh->pad_size = 0;
-+	parsed_eh->decap_size = 0;
-+	parsed_eh->free_idx = 0;
-+	parsed_eh->last_pad.offset = 0;
-+	parsed_eh->last_pad.size = 0;
++	struct ioam_parsed_eh parsed_eh;
++	parsed_eh.pad_size = 0;
++	parsed_eh.decap_size = 0;
++	parsed_eh.free_idx = 0;
++	opt->ioam = &parsed_eh;
 +#endif
  
  	/*
  	 * skb_network_header(skb) is equal to skb->data, and
-@@ -819,12 +1009,30 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
+@@ -819,12 +989,29 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
  	}
  
  	opt->flags |= IP6SKB_HOPBYHOP;
@@ -1320,12 +1417,11 @@ index b636f1da..d2e9144 100644
  	if (ip6_parse_tlv(tlvprochopopt_lst, skb)) {
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
 +		/*
-+		 * iOAM decapsulation, if any
++		 * IOAM namespaces removal, if any
++		 * Applied only on in-transit packets
 +		 */
-+		if (parsed_eh->decap_size > 0 && dev_in != dev_out 
-+			&& (dev_in->ioam_if_mode & IOAM_IF_MODE_INGRESS)) {
-+
-+			ioam_hbh_decapsulate(skb);
++		if (parsed_eh.decap_size > 0 && dev_in != dev_out) {
++			ioam_decapsulate(skb);
 +
 +			/* In case the entire Hop-by-Hop was removed */
 +			if (ipv6_hdr(skb)->nexthdr != NEXTHDR_HOP) {
@@ -1345,10 +1441,10 @@ index b636f1da..d2e9144 100644
  
 diff --git a/net/ipv6/ioam.c b/net/ipv6/ioam.c
 new file mode 100644
-index 0000000..bea2fce
+index 0000000..c5e740e
 --- /dev/null
 +++ b/net/ipv6/ioam.c
-@@ -0,0 +1,675 @@
+@@ -0,0 +1,673 @@
 +/*
 + *	In-situ OAM (IOAM) for IPv6
 + *
@@ -1370,6 +1466,7 @@ index 0000000..bea2fce
 +#include <linux/hashtable.h>
 +#include <linux/netdevice.h>
 +#include <linux/in6.h>
++#include <linux/inet.h>
 +#include <net/rtnetlink.h>
 +#include <net/ioam.h>
 +
@@ -1391,6 +1488,9 @@ index 0000000..bea2fce
 +
 +	u16 hbh_opt_nb;
 +	u16 dst_opt_nb;
++
++	bool is_encap;
++	struct in6_addr tun_dst;
 +};
 +
 +static long ioam_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
@@ -1500,20 +1600,20 @@ index 0000000..bea2fce
 +		if (dev->ioam_hbh)
 +		{
 +			for(i = 0; i < dev->ioam_hbh->ioam_opt_nb; i++)
-+				kfree(dev->ioam_hbh->ioam_opt[i]);
++				devm_kfree(&dev->dev, dev->ioam_hbh->ioam_opt[i]);
 +
-+			kfree(dev->ioam_hbh->ioam_opt);
-+			kfree(dev->ioam_hbh);
++			devm_kfree(&dev->dev, dev->ioam_hbh->ioam_opt);
++			devm_kfree(&dev->dev, dev->ioam_hbh);
 +		}
 +		dev->ioam_hbh = NULL;
 +
 +		if (dev->ioam_dst)
 +		{
 +			for(i = 0; i < dev->ioam_dst->ioam_opt_nb; i++)
-+				kfree(dev->ioam_dst->ioam_opt[i]);
++				devm_kfree(&dev->dev, dev->ioam_dst->ioam_opt[i]);
 +
-+			kfree(dev->ioam_dst->ioam_opt);
-+			kfree(dev->ioam_dst);
++			devm_kfree(&dev->dev, dev->ioam_dst->ioam_opt);
++			devm_kfree(&dev->dev, dev->ioam_dst);
 +		}
 +		dev->ioam_dst = NULL;
 +	}
@@ -1527,25 +1627,25 @@ index 0000000..bea2fce
 +	net_namespace()->ipv6.ioam_node_id = 0;
 +}
 +
-+static struct ioam_eh * ioam_eh_alloc(u16 ioam_size, unsigned int opt_nb)
++static struct ioam_eh * ioam_eh_alloc(struct net_device *net_dev, u16 ioam_size, unsigned int opt_nb)
 +{
 +	u8 header_size = ioam_ipv6opt_header_size();
 +	u8 pad_size = (8 - ((header_size + ioam_size) % 8)) % 8;
 +	u16 buffer_size = header_size + ioam_size + pad_size;
 +	int i;
 +
-+	struct ioam_eh *ioam_eh = kzalloc(sizeof(struct ioam_eh) + buffer_size, GFP_KERNEL);
++	struct ioam_eh *ioam_eh = devm_kzalloc(&net_dev->dev, sizeof(struct ioam_eh) + buffer_size, GFP_KERNEL);
 +	if (!ioam_eh)
 +		return NULL;
 +
 +	ioam_eh->ioam_opt_nb = opt_nb;
-+	ioam_eh->ioam_opt = kcalloc(opt_nb, sizeof(struct ioam_eh_opt *), GFP_KERNEL);
++	ioam_eh->ioam_opt = devm_kcalloc(&net_dev->dev, opt_nb, sizeof(struct ioam_eh_opt *), GFP_KERNEL);
 +	if (!ioam_eh->ioam_opt)
 +		return NULL;
 +
 +	for(i = 0; i < opt_nb; i++)
 +	{
-+		ioam_eh->ioam_opt[i] = kmalloc(sizeof(struct ioam_eh_opt), GFP_KERNEL);
++		ioam_eh->ioam_opt[i] = devm_kmalloc(&net_dev->dev, sizeof(struct ioam_eh_opt), GFP_KERNEL);
 +		if (!ioam_eh->ioam_opt[i])
 +			return NULL;
 +	}
@@ -1619,7 +1719,7 @@ index 0000000..bea2fce
 +		/* Hop-by-hop iOAM data allocation per dev, if any */
 +		if (hn->hbh_len > 0)
 +		{
-+			dev->ioam_hbh = ioam_eh_alloc(hn->hbh_len, hn->hbh_opt_nb);
++			dev->ioam_hbh = ioam_eh_alloc(dev, hn->hbh_len, hn->hbh_opt_nb);
 +			if (!dev->ioam_hbh)
 +				goto error_release_all;
 +		}
@@ -1627,7 +1727,7 @@ index 0000000..bea2fce
 +		/* Destination iOAM data allocation per dev, if any */
 +		if (hn->dst_len > 0)
 +		{
-+			dev->ioam_dst = ioam_eh_alloc(hn->dst_len, hn->dst_opt_nb);
++			dev->ioam_dst = ioam_eh_alloc(dev, hn->dst_len, hn->dst_opt_nb);
 +			if (!dev->ioam_dst)
 +				goto error_release_all;
 +		}
@@ -1711,40 +1811,20 @@ index 0000000..bea2fce
 +		{
 +			size = ioam_ipv6opt_header_size() + ioam_e2e_size(encaps[i].e2e.type);
 +
-+			if (encaps[i].e2e.inside_hbh)
-+			{
-+				dev->ioam_hbh->buffer[hn->hbh_idx] = IPV6_TLV_IOAM_HOPOPTS;
-+				dev->ioam_hbh->buffer[hn->hbh_idx+1] = size - 2;
-+				dev->ioam_hbh->buffer[hn->hbh_idx+3] = IOAM_OPTION_E2E;
++			dev->ioam_dst->buffer[hn->dst_idx] = IPV6_TLV_IOAM_DSTOPTS;
++			dev->ioam_dst->buffer[hn->dst_idx+1] = size - 2;
++			dev->ioam_dst->buffer[hn->dst_idx+3] = IOAM_OPTION_E2E;
 +
-+				*(__be16 *)&dev->ioam_hbh->buffer[hn->hbh_idx+4] = cpu_to_be16(encaps[i].namespace_id);
-+				*(__be16 *)&dev->ioam_hbh->buffer[hn->hbh_idx+6] = cpu_to_be16(encaps[i].e2e.type);
++			*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+4] = cpu_to_be16(encaps[i].namespace_id);
++			*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+6] = cpu_to_be16(encaps[i].e2e.type);
 +
-+				dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].e2e.type;
-+				dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
-+				dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
-+				dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = ioam_fill_e2e_data_node;
++			dev->ioam_dst->ioam_opt[optnumdst]->type = encaps[i].e2e.type;
++			dev->ioam_dst->ioam_opt[optnumdst]->ns_data = ns->data;
++			dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
++			dev->ioam_dst->ioam_opt[optnumdst]->write_handler = ioam_fill_e2e_data_node;
 +
-+				optnumhbh++;
-+				hn->hbh_idx += size;
-+			}
-+			else
-+			{
-+				dev->ioam_dst->buffer[hn->dst_idx] = IPV6_TLV_IOAM_DSTOPTS;
-+				dev->ioam_dst->buffer[hn->dst_idx+1] = size - 2;
-+				dev->ioam_dst->buffer[hn->dst_idx+3] = IOAM_OPTION_E2E;
-+
-+				*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+4] = cpu_to_be16(encaps[i].namespace_id);
-+				*(__be16 *)&dev->ioam_dst->buffer[hn->dst_idx+6] = cpu_to_be16(encaps[i].e2e.type);
-+
-+				dev->ioam_dst->ioam_opt[optnumdst]->type = encaps[i].e2e.type;
-+				dev->ioam_dst->ioam_opt[optnumdst]->ns_data = ns->data;
-+				dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
-+				dev->ioam_dst->ioam_opt[optnumdst]->write_handler = ioam_fill_e2e_data_node;
-+
-+				optnumdst++;
-+				hn->dst_idx += size;
-+			}
++			optnumdst++;
++			hn->dst_idx += size;
 +		}
 +
 +		dev_put(dev);
@@ -1809,16 +1889,6 @@ index 0000000..bea2fce
 +		    || copy_from_user(buffer.nss, argp->nss, buffer.ns_nb * sizeof(struct ioam_namespace))
 +		    || copy_from_user(buffer.encaps, argp->encaps, buffer.encap_nb * sizeof(struct ioam_encapsulate)))
 +			return IOAM_ERR_COPY;
-+
-+		for(i = 0; i < buffer.if_nb; i++)
-+		{
-+			if (copy_from_user(buffer.ifs[i].if_name, argp->ifs[i].if_name, IFNAMSIZ))
-+				return IOAM_ERR_COPY;
-+			if (!dev_exists(buffer.ifs[i].if_name))
-+				return IOAM_ERR_IFNAME;
-+			if (buffer.ifs[i].ioam_if_mode > (IOAM_IF_MODE_INGRESS | IOAM_IF_MODE_EGRESS))
-+				return IOAM_ERR_IFMODE;
-+		}
 +
 +		hash_init(hwrapper.htable);
 +		for(i = 0; i < buffer.encap_nb; i++)
@@ -1904,16 +1974,40 @@ index 0000000..bea2fce
 +					return IOAM_ERR_E2E;
 +				}
 +
-+				if (buffer.encaps[i].e2e.inside_hbh)
-+				{
-+					perdev_counters->hbh_opt_nb++;
-+					perdev_counters->hbh_len += ioam_ipv6opt_header_size() + ioam_e2e_size(buffer.encaps[i].e2e.type);
-+				}
-+				else
-+				{
-+					perdev_counters->dst_opt_nb++;
-+					perdev_counters->dst_len += ioam_ipv6opt_header_size() + ioam_e2e_size(buffer.encaps[i].e2e.type);
-+				}
++				perdev_counters->dst_opt_nb++;
++				perdev_counters->dst_len += ioam_ipv6opt_header_size() + ioam_e2e_size(buffer.encaps[i].e2e.type);
++			}
++			dev_put(dev);
++		}
++
++		for(i = 0; i < buffer.if_nb; i++)
++		{
++			if (copy_from_user(buffer.ifs[i].if_name, argp->ifs[i].if_name, IFNAMSIZ)
++				|| copy_from_user(buffer.ifs[i].encap_dst, argp->ifs[i].encap_dst, INET6_ADDRSTRLEN))
++			{
++				clear_dev_counters(&hwrapper);
++				return IOAM_ERR_COPY;
++			}
++			if (buffer.ifs[i].ioam_if_mode > (IOAM_IF_MODE_INGRESS | IOAM_IF_MODE_EGRESS))
++			{
++				clear_dev_counters(&hwrapper);
++				return IOAM_ERR_IFMODE;
++			}
++			
++			dev = dev_by_name(buffer.ifs[i].if_name);
++			if (!dev)
++			{
++				clear_dev_counters(&hwrapper);
++				return IOAM_ERR_IFNAME;
++			}
++
++			perdev_counters = dev_counters_get(&hwrapper, dev->ifindex);
++			if (perdev_counters 
++				&& !in6_pton(buffer.ifs[i].encap_dst, INET6_ADDRSTRLEN, (u8 *)&dev->ioam_tun_dst, -1, NULL))
++			{
++				dev_put(dev);
++				clear_dev_counters(&hwrapper);
++				return IOAM_ERR_ADDR;
 +			}
 +			dev_put(dev);
 +		}
@@ -2025,7 +2119,7 @@ index 0000000..bea2fce
 +MODULE_SUPPORTED_DEVICE("ioam");
 +
 diff --git a/net/ipv6/ip6_input.c b/net/ipv6/ip6_input.c
-index 9ee208a..1ab7260 100644
+index 9ee208a..4afc773 100644
 --- a/net/ipv6/ip6_input.c
 +++ b/net/ipv6/ip6_input.c
 @@ -47,6 +47,10 @@
@@ -2039,17 +2133,7 @@ index 9ee208a..1ab7260 100644
  int ip6_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
  {
  	void (*edemux)(struct sk_buff *skb);
-@@ -77,6 +81,9 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
- 	u32 pkt_len;
- 	struct inet6_dev *idev;
- 	struct net *net = dev_net(skb->dev);
-+#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+	struct ioam_parsed_eh parsed_eh;
-+#endif
- 
- 	if (skb->pkt_type == PACKET_OTHERHOST) {
- 		kfree_skb(skb);
-@@ -192,6 +199,16 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
+@@ -192,6 +196,14 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
  		hdr = ipv6_hdr(skb);
  	}
  
@@ -2059,55 +2143,175 @@ index 9ee208a..1ab7260 100644
 +	 */
 +	if (!skb_valid_dst(skb))
 +		ip6_route_input(skb);
-+
-+	IP6CB(skb)->ioam = &parsed_eh;
 +#endif
 +
  	if (hdr->nexthdr == NEXTHDR_HOP) {
  		if (ipv6_parse_hopopts(skb) < 0) {
  			__IP6_INC_STATS(net, idev, IPSTATS_MIB_INHDRERRORS);
-@@ -200,6 +217,17 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
- 		}
- 	}
+@@ -223,12 +235,16 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
  
+ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
+ {
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+	/*
-+	 * iOAM encapsulation, if any
-+	 */
-+	if (skb_dst(skb)->dev->ioam_hbh && skb->dev != skb_dst(skb)->dev
-+			&& !(atomic_inc_return(&skb->dev->ioam_pkt_nb) % skb->dev->ioam_pkt_freq))
-+		ioam_hbh_encapsulate(skb);
-+
-+	IP6CB(skb)->ioam = NULL;
++	struct inet6_skb_parm *opt = IP6CB(skb);
++	u8 hop_limit = ipv6_hdr(skb)->hop_limit;
 +#endif
-+
- 	rcu_read_unlock();
- 
- 	/* Must drop socket now because of tproxy. */
-@@ -229,6 +257,9 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
+ 	const struct inet6_protocol *ipprot;
++	bool have_final = false;
+ 	struct inet6_dev *idev;
+ 	unsigned int nhoff;
  	int nexthdr;
  	bool raw;
- 	bool have_final = false;
-+#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+	struct ioam_parsed_eh parsed_eh;
-+#endif
+-	bool have_final = false;
  
  	/*
  	 *	Parse extension headers
-@@ -281,8 +312,16 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
- 		    !xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb))
- 			goto discard;
+@@ -245,6 +261,7 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
+ resubmit_final:
+ 	raw = raw6_local_deliver(skb, nexthdr);
+ 	ipprot = rcu_dereference(inet6_protos[nexthdr]);
++
+ 	if (ipprot) {
+ 		int ret;
+ 
+@@ -300,6 +317,26 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
+ 	} else {
+ 		if (!raw) {
+ 			if (xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb)) {
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++				/*
++				 * IOAM IPv6 Tunnel Decapsulation
++				 * Packet is going to re-enter the stack
++				 */
++				if (nexthdr == NEXTHDR_IPV6 
++					&& (opt->flags & IP6SKB_IOAM)) {
++
++					skb_reset_network_header(skb);
++					skb_reset_transport_header(skb);
++
++					ipv6_hdr(skb)->hop_limit = hop_limit;
++
++					__skb_tunnel_rx(skb, skb->dev, 
++							dev_net(skb->dev));
++
++					netif_rx(skb);
++					goto ret_ok;
++				}
++#endif
+ 				__IP6_INC_STATS(net, idev,
+ 						IPSTATS_MIB_INUNKNOWNPROTOS);
+ 				icmpv6_send(skb, ICMPV6_PARAMPROB,
+@@ -311,6 +348,9 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
+ 			consume_skb(skb);
+ 		}
+ 	}
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++ret_ok:
++#endif
+ 	rcu_read_unlock();
+ 	return 0;
+ 
+@@ -321,7 +361,6 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
+ 	return 0;
+ }
+ 
+-
+ int ip6_input(struct sk_buff *skb)
+ {
+ 	return NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_IN,
+diff --git a/net/ipv6/ip6_output.c b/net/ipv6/ip6_output.c
+index 1699acb..9e61344 100644
+--- a/net/ipv6/ip6_output.c
++++ b/net/ipv6/ip6_output.c
+@@ -59,6 +59,10 @@
+ #include <net/l3mdev.h>
+ #include <net/lwtunnel.h>
  
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+		IP6CB(skb)->ioam = &parsed_eh;
-+#endif
- 		ret = ipprot->handler(skb);
- 		if (ret > 0) {
-+#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+			//TODO encap ioam_dst here
-+			IP6CB(skb)->ioam = NULL;
++#include <net/ioam.h>
 +#endif
 +
- 			if (ipprot->flags & INET6_PROTO_FINAL) {
- 				/* Not an extension header, most likely UDP
- 				 * encapsulation. Use return value as nexthdr
+ static int ip6_finish_output2(struct net *net, struct sock *sk, struct sk_buff *skb)
+ {
+ 	struct dst_entry *dst = skb_dst(skb);
+@@ -255,6 +259,17 @@ int ip6_xmit(const struct sock *sk, struct sk_buff *skb, struct flowi6 *fl6,
+ 		if (unlikely(!skb))
+ 			return 0;
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++		/*
++		 * iOAM insertion, if any
++		 */
++		if ((dst->dev->ioam_hbh || dst->dev->ioam_dst)
++			&& !(atomic_inc_return(&dst->dev->ioam_pkt_nb) 
++						% dst->dev->ioam_pkt_freq)) {
++
++			ioam_insert(skb);
++		}
++#endif
+ 		/* hooks should never assume socket lock is held.
+ 		 * we promote our socket to non const
+ 		 */
+@@ -359,6 +374,19 @@ static int ip6_forward_proxy_check(struct sk_buff *skb)
+ static inline int ip6_forward_finish(struct net *net, struct sock *sk,
+ 				     struct sk_buff *skb)
+ {
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	struct net_device *dev = skb_dst(skb)->dev;
++
++	/*
++	 * iOAM encapsulation, if any
++	 */
++	if ((dev->ioam_hbh || dev->ioam_dst) 
++		&& !(atomic_inc_return(&dev->ioam_pkt_nb) 
++					% dev->ioam_pkt_freq)) {
++
++		ioam_encapsulate(skb);
++	}
++#endif
+ 	return dst_output(net, sk, skb);
+ }
+ 
+diff --git a/net/ipv6/output_core.c b/net/ipv6/output_core.c
+index e9065b8..c75d3f3 100644
+--- a/net/ipv6/output_core.c
++++ b/net/ipv6/output_core.c
+@@ -10,6 +10,10 @@
+ #include <net/secure_seq.h>
+ #include <linux/netfilter.h>
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++#include <net/ioam.h>
++#endif
++
+ static u32 __ipv6_select_ident(struct net *net, u32 hashrnd,
+ 			       const struct in6_addr *dst,
+ 			       const struct in6_addr *src)
+@@ -142,6 +146,9 @@ EXPORT_SYMBOL(ip6_dst_hoplimit);
+ 
+ int __ip6_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
+ {
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	struct net_device *dev = skb_dst(skb)->dev;
++#endif
+ 	int len;
+ 
+ 	len = skb->len - sizeof(struct ipv6hdr);
+@@ -159,6 +166,17 @@ int __ip6_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
+ 
+ 	skb->protocol = htons(ETH_P_IPV6);
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	/*
++	 * iOAM insertion, if any
++	 */
++	if ((dev->ioam_hbh || dev->ioam_dst)
++		&& !(atomic_inc_return(&dev->ioam_pkt_nb) 
++					% dev->ioam_pkt_freq)) {
++
++		ioam_insert(skb);
++	}
++#endif
+ 	return nf_hook(NFPROTO_IPV6, NF_INET_LOCAL_OUT,
+ 		       net, sk, skb, NULL, skb_dst(skb)->dev,
+ 		       dst_output);

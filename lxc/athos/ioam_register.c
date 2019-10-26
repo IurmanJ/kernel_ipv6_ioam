@@ -25,7 +25,8 @@ int main()
 			{
 				.ioam_if_id = 12,
 				.if_name = "h_athos2",
-				.ioam_if_mode = IOAM_IF_MODE_EGRESS
+				.ioam_if_mode = IOAM_IF_MODE_EGRESS,
+				.encap_dst = "db02::2"
 			}
 		},
 
@@ -52,7 +53,7 @@ int main()
 					.hop_nb = 3,
 					.type = IOAM_TRACE_TYPE_0 | IOAM_TRACE_TYPE_1
 				},
-				.pot =
+				/*.pot =
 				{
 					.enabled = true,
 					.profile = IOAM_POT_PROFILE_1,
@@ -63,7 +64,7 @@ int main()
 					.enabled = true,
 					.inside_hbh = true,
 					.type = IOAM_E2E_TYPE_1
-				}
+				}*/
 			}
 		}
 	};
