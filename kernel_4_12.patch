@@ -1441,10 +1441,10 @@ index b636f1da..cbaf6c5 100644
  
 diff --git a/net/ipv6/ioam.c b/net/ipv6/ioam.c
 new file mode 100644
-index 0000000..c5e740e
+index 0000000..be59065
 --- /dev/null
 +++ b/net/ipv6/ioam.c
-@@ -0,0 +1,673 @@
+@@ -0,0 +1,670 @@
 +/*
 + *	In-situ OAM (IOAM) for IPv6
 + *
@@ -1488,9 +1488,6 @@ index 0000000..c5e740e
 +
 +	u16 hbh_opt_nb;
 +	u16 dst_opt_nb;
-+
-+	bool is_encap;
-+	struct in6_addr tun_dst;
 +};
 +
 +static long ioam_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
