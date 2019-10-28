@@ -1166,7 +1166,7 @@ index 217e9ff..99bb511 100644
  ipv6-objs += $(ipv6-y)
  
 diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
-index b636f1da..cbaf6c5 100644
+index b636f1da..5c4f5b0 100644
 --- a/net/ipv6/exthdrs.c
 +++ b/net/ipv6/exthdrs.c
 @@ -55,6 +55,11 @@
@@ -1392,14 +1392,11 @@ index b636f1da..cbaf6c5 100644
  	{
  		.type	= IPV6_TLV_ROUTERALERT,
  		.func	= ipv6_hop_ra,
-@@ -804,6 +964,16 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
+@@ -804,6 +964,13 @@ static const struct tlvtype_proc tlvprochopopt_lst[] = {
  int ipv6_parse_hopopts(struct sk_buff *skb)
  {
  	struct inet6_skb_parm *opt = IP6CB(skb);
 +#if IS_ENABLED(CONFIG_IPV6_IOAM)
-+	struct net_device *dev_in = skb->dev;
-+	struct net_device *dev_out = skb_dst(skb)->dev;
-+
 +	struct ioam_parsed_eh parsed_eh;
 +	parsed_eh.pad_size = 0;
 +	parsed_eh.decap_size = 0;
@@ -1409,7 +1406,7 @@ index b636f1da..cbaf6c5 100644
  
  	/*
  	 * skb_network_header(skb) is equal to skb->data, and
-@@ -819,12 +989,29 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
+@@ -819,12 +986,31 @@ int ipv6_parse_hopopts(struct sk_buff *skb)
  	}
  
  	opt->flags |= IP6SKB_HOPBYHOP;
@@ -1420,7 +1417,9 @@ index b636f1da..cbaf6c5 100644
 +		 * IOAM namespaces removal, if any
 +		 * Applied only on in-transit packets
 +		 */
-+		if (parsed_eh.decap_size > 0 && dev_in != dev_out) {
++		if (parsed_eh.decap_size > 0 
++			&& !(skb_dst(skb)->dev->flags & IFF_LOOPBACK)) {
++
 +			ioam_decapsulate(skb);
 +
 +			/* In case the entire Hop-by-Hop was removed */
