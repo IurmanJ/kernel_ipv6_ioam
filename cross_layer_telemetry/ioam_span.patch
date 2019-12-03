@@ -1,0 +1,471 @@
+diff --git a/arch/x86/entry/syscalls/syscall_32.tbl b/arch/x86/entry/syscalls/syscall_32.tbl
+index 448ac21..429b765 100644
+--- a/arch/x86/entry/syscalls/syscall_32.tbl
++++ b/arch/x86/entry/syscalls/syscall_32.tbl
+@@ -391,3 +391,4 @@
+ 382	i386	pkey_free		sys_pkey_free
+ 383	i386	statx			sys_statx
+ 384	i386	arch_prctl		sys_arch_prctl			compat_sys_arch_prctl
++385	i386	socket_ioam		sys_socket_ioam
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index 5aef183..cfc1260 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -339,6 +339,7 @@
+ 330	common	pkey_alloc		sys_pkey_alloc
+ 331	common	pkey_free		sys_pkey_free
+ 332	common	statx			sys_statx
++333	common	socket_ioam		sys_socket_ioam
+ 
+ #
+ # x32-specific system call numbers start at 512 to avoid cache impact
+diff --git a/fs/file.c b/fs/file.c
+index 1c2972e..3ce2138 100644
+--- a/fs/file.c
++++ b/fs/file.c
+@@ -23,6 +23,10 @@
+ #include <linux/rcupdate.h>
+ #include <linux/workqueue.h>
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++#include <net/ioam.h>
++#endif
++
+ unsigned int sysctl_nr_open __read_mostly = 1024*1024;
+ unsigned int sysctl_nr_open_min = BITS_PER_LONG;
+ /* our min() is unusable in constant expressions ;-/ */
+@@ -636,6 +640,9 @@ int __close_fd(struct files_struct *files, unsigned fd)
+ {
+ 	struct file *file;
+ 	struct fdtable *fdt;
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	struct hnode_trace_span *hnode;
++#endif
+ 
+ 	spin_lock(&files->file_lock);
+ 	fdt = files_fdtable(files);
+@@ -648,6 +655,13 @@ int __close_fd(struct files_struct *files, unsigned fd)
+ 	__clear_close_on_exec(fd, fdt);
+ 	__put_unused_fd(files, fd);
+ 	spin_unlock(&files->file_lock);
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	hnode = get_span(fd);
++	if (hnode) {
++		hash_del(&hnode->node);
++		kfree(hnode);
++	}
++#endif
+ 	return filp_close(file, files);
+ 
+ out_unlock:
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index 980c3c9..531e105 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -81,6 +81,10 @@ union bpf_attr;
+ #include <linux/key.h>
+ #include <trace/syscall.h>
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++#include <crypto/b128ops.h>
++#endif
++
+ /*
+  * __MAP - apply a macro to syscall arguments
+  * __MAP(n, m, t1, a1, t2, a2, ..., tn, an) will expand to
+@@ -623,6 +627,10 @@ asmlinkage long sys_recvmmsg(int fd, struct mmsghdr __user *msg,
+ 			     unsigned int vlen, unsigned flags,
+ 			     struct timespec __user *timeout);
+ asmlinkage long sys_socket(int, int, int);
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++//asmlinkage long sys_socket_ioam(unsigned int fd, u64 span_id, u128 trace_id);
++asmlinkage long sys_socket_ioam(unsigned int fd, u64 span_id);
++#endif
+ asmlinkage long sys_socketpair(int, int, int, int __user *);
+ asmlinkage long sys_socketcall(int call, unsigned long __user *args);
+ asmlinkage long sys_listen(int, int);
+diff --git a/include/net/ioam.h b/include/net/ioam.h
+index 6c1b390..328d45c 100644
+--- a/include/net/ioam.h
++++ b/include/net/ioam.h
+@@ -7,6 +7,7 @@
+ #include <net/ipv6.h>
+ #include <net/addrconf.h>
+ #include <uapi/linux/ioam.h>
++#include <crypto/b128ops.h>
+ 
+ #define IOAM_OPTION_PREALLOC 0 /* (Hop-by-Hop) pre-allocated trace option */
+ #define IOAM_OPTION_INCREM   1 /* (Hop-by-Hop) incremental trace option */
+@@ -16,7 +17,7 @@
+ /* ----- Sizes (fixed) in octet ----- */
+ #define IOAM_IPV6OPT_HEADER_SIZE 4
+ 
+-#define IOAM_TRACE_HEADER_SIZE 8
++#define IOAM_TRACE_HEADER_SIZE 16 //8 + span ID (64 bits)
+ #define IOAM_POT_HEADER_SIZE   4
+ #define IOAM_E2E_HEADER_SIZE   4
+ 
+@@ -71,6 +72,15 @@ struct hnode_namespace
+ 	//chosen in a trace (criteria?) -> waiting for draft update
+ };
+ 
++struct hnode_trace_span
++{
++	struct hlist_node node;
++
++	unsigned int	fd;
++	__be64		span_id;
++	//be128		trace_id;
++};
++
+ /**
+  * struct ioam_eh_opt - Generic iOAM option data for encapsulation 
+  *                      and/or iOAM node-data insertion
+@@ -88,6 +98,7 @@ struct ioam_eh_opt
+ {
+ 	u16  type;
+ 	u16  write_offset;
++	u16  span_offset;
+ 	__be32 ns_data;
+ 	void (*write_handler)(u16 type, __be32 ns_data, 
+ 				struct sk_buff *skb, u8 *buffer);
+@@ -313,6 +324,28 @@ static inline struct hnode_namespace *ioam_namespace(struct net *net_ns, __be16
+ 	return NULL;
+ }
+ 
++static inline struct hnode_trace_span *get_span(unsigned int fd)
++{
++	struct hnode_trace_span *hn;
++
++	//TODO lock to avoid problem when "unregistering"
++	hash_for_each_possible(current->nsproxy->net_ns->ipv6.h_fdspans, hn, node, fd)
++	{
++		if (hn->fd != fd)
++			continue;
++
++		return hn;
++	}
++
++	return NULL;
++}
++
++static inline void ioam_fill_trace_span(__be64 span_id, u8 *buffer)
++{
++	u8 *data = buffer;
++	*(__be64 *)data = span_id;
++}
++
+ static inline void ioam_insert(struct sk_buff *skb)
+ {
+ 	struct net_device *dev = skb_dst(skb)->dev;
+@@ -402,6 +435,10 @@ static inline void ioam_insert(struct sk_buff *skb)
+ 		for(i = 0; i < dev->ioam_hbh->ioam_opt_nb; i++) {
+ 			opt = dev->ioam_hbh->ioam_opt[i];
+ 
++			if (opt->span_offset)
++				ioam_fill_trace_span(skb->sk->sk_active_span,
++						hbh_ptr + opt->span_offset);
++
+ 			if (!opt->write_handler)
+ 				continue;
+ 
+diff --git a/include/net/netns/ipv6.h b/include/net/netns/ipv6.h
+index 6aa0c26..b20ce7d2 100644
+--- a/include/net/netns/ipv6.h
++++ b/include/net/netns/ipv6.h
+@@ -94,6 +94,7 @@ struct netns_ipv6 {
+ 	u32			ioam_node_id;
+ 	u8			*padding[8];
+ 	DECLARE_HASHTABLE(h_namespaces, 6);
++	DECLARE_HASHTABLE(h_fdspans, 6);
+ #endif
+ };
+ 
+diff --git a/include/net/sock.h b/include/net/sock.h
+index f33e3d1..eea73c6 100644
+--- a/include/net/sock.h
++++ b/include/net/sock.h
+@@ -72,6 +72,10 @@
+ #include <linux/net_tstamp.h>
+ #include <net/smc.h>
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++#include <crypto/b128ops.h>
++#endif
++
+ /*
+  * This structure really needs to be cleaned up.
+  * Most of it is for TCP, and not used by any of
+@@ -473,6 +477,10 @@ struct sock {
+ 	void                    (*sk_destruct)(struct sock *sk);
+ 	struct sock_reuseport __rcu	*sk_reuseport_cb;
+ 	struct rcu_head		sk_rcu;
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	__be64			sk_active_span;
++	be128			sk_active_trace;
++#endif
+ };
+ 
+ #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))
+diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
+index 061185a..c772789 100644
+--- a/include/uapi/asm-generic/unistd.h
++++ b/include/uapi/asm-generic/unistd.h
+@@ -896,6 +896,14 @@ __SYSCALL(__NR_fork, sys_ni_syscall)
+ #undef __NR_syscalls
+ #define __NR_syscalls (__NR_fork+1)
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++#define __NR_socket_ioam 1080
++__SYSCALL(__NR_socket_ioam, sys_socket_ioam)
++
++#undef __NR_syscalls
++#define __NR_syscalls (__NR_socket_ioam+1)
++#endif
++
+ #endif /* __ARCH_WANT_SYSCALL_DEPRECATED */
+ 
+ /*
+diff --git a/kernel/sys_ni.c b/kernel/sys_ni.c
+index 8acef85..b1c5b3c 100644
+--- a/kernel/sys_ni.c
++++ b/kernel/sys_ni.c
+@@ -42,6 +42,7 @@ cond_syscall(sys_send);
+ cond_syscall(sys_recvfrom);
+ cond_syscall(sys_recv);
+ cond_syscall(sys_socket);
++cond_syscall(sys_socket_ioam);
+ cond_syscall(sys_setsockopt);
+ cond_syscall(compat_sys_setsockopt);
+ cond_syscall(sys_getsockopt);
+diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
+index 5c4f5b0..d996219 100644
+--- a/net/ipv6/exthdrs.c
++++ b/net/ipv6/exthdrs.c
+@@ -835,8 +835,8 @@ static bool ipv6_hop_ioam(struct sk_buff *skb, int optoff)
+ 			return true;
+ 		}
+ 
+-		// +12 octets to move FROM Option Type TO the beginning of the node data list
+-		node_offset = opth + 12 + remaining_len*4 - node_len*4;
++		// +N octets to move FROM Option Type TO the beginning of the node data list
++		node_offset = opth + ioam_ipv6opt_header_size() + ioam_trace_header_size() + remaining_len*4 - node_len*4;
+ 		ioam_fill_trace_data_node(trace_type, ns->data, skb, node_offset);
+ 		*(opth + 7) = remaining_len - node_len;
+ 		break;
+diff --git a/net/ipv6/ioam.c b/net/ipv6/ioam.c
+index be59065..d428a00 100644
+--- a/net/ipv6/ioam.c
++++ b/net/ipv6/ioam.c
+@@ -127,9 +127,10 @@ static void clear_dev_counters(struct hwrapper *hwrapper)
+ static void ioam_cleanup(void)
+ {
+ 	struct hnode_namespace *hn;
++	struct hnode_trace_span *hts;
+ 	struct hlist_node *tmp_node;
+ 	struct net_device *dev;
+-	int i;
++	int i, j;
+ 
+ 	/* Empty namespaces hashtable and free nodes */
+ 	hash_for_each_safe(net_namespace()->ipv6.h_namespaces, i, tmp_node, hn, node)
+@@ -138,6 +139,13 @@ static void ioam_cleanup(void)
+ 		kfree(hn);
+ 	}
+ 
++	/* Empty spans hashtable and free nodes */
++	hash_for_each_safe(net_namespace()->ipv6.h_fdspans, j, tmp_node, hts, node)
++	{
++		hash_del(&hts->node);
++		kfree(hts);
++	}
++
+ 	/* Free iOAM encapsulation buffers per dev */
+ 	rtnl_lock();
+ 	for_each_netdev(net_namespace(), dev)
+@@ -331,7 +339,8 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
+ 
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].trace.type;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
+-			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 12 + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->span_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_trace_header_size() - 8 - dev->ioam_hbh->ioam_offset;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_trace_header_size() + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = (encaps[i].trace.incremental) ? NULL : ioam_fill_trace_data_node;
+ 
+ 			optnumhbh++;
+@@ -351,6 +360,7 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
+ 
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].pot.type;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->span_offset = 0;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = ioam_fill_pot_data_node;
+ 
+@@ -370,6 +380,7 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
+ 
+ 			dev->ioam_dst->ioam_opt[optnumdst]->type = encaps[i].e2e.type;
+ 			dev->ioam_dst->ioam_opt[optnumdst]->ns_data = ns->data;
++			dev->ioam_dst->ioam_opt[optnumdst]->span_offset = 0;
+ 			dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
+ 			dev->ioam_dst->ioam_opt[optnumdst]->write_handler = ioam_fill_e2e_data_node;
+ 
+@@ -566,6 +577,7 @@ static long ioam_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+ 		 * Second pass: store data
+ 		 */
+ 		hash_init(net_namespace()->ipv6.h_namespaces);
++		hash_init(net_namespace()->ipv6.h_fdspans);
+ 
+ 		/* Per namespace data */
+ 		for(i = 0; i < buffer.ns_nb; i++)
+diff --git a/net/socket.c b/net/socket.c
+index c2564eb..2375671 100644
+--- a/net/socket.c
++++ b/net/socket.c
+@@ -108,6 +108,10 @@
+ #include <net/busy_poll.h>
+ #include <linux/errqueue.h>
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++#include <net/ioam.h>
++#endif
++
+ #ifdef CONFIG_NET_RX_BUSY_POLL
+ unsigned int sysctl_net_busy_read __read_mostly;
+ unsigned int sysctl_net_busy_poll __read_mostly;
+@@ -1292,6 +1296,60 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
+ 	return retval;
+ }
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++SYSCALL_DEFINE2(socket_ioam, unsigned int, fd, u64, span_id)
++//SYSCALL_DEFINE3(socket_ioam, unsigned int, fd, u64, span_id, u128, trace_id)
++{
++	struct hnode_trace_span *hnode;
++	long err = -EPERM;
++	struct fd f;
++
++	/* IOAM must be configured on the node */
++	if (!ioam_node_id(current->nsproxy->net_ns))
++		goto out;
++
++	/* File must exist for fd */
++	f = fdget_raw(fd);
++	if (!f.file) {
++		err = -EBADF;
++		goto out;
++	}
++
++	/* Master fd must be of socket type */
++	if (!S_ISSOCK(f.file->f_path.dentry->d_inode->i_mode)) {
++		err = -ENOTSOCK;
++		goto release_f;
++	}
++
++	/* Create a node for the hashtable of spans */
++	hnode = kmalloc(sizeof(struct hnode_trace_span), GFP_KERNEL);
++	if (!hnode) {
++		err = -ENOMEM;
++		goto release_f;
++	}
++
++	/* Duplicate fd and store it */
++	err = f_dupfd(fd, f.file, 0);
++	if (err <= 0)
++		kfree(hnode);
++	else {
++		hnode->fd = err;
++		hnode->span_id = cpu_to_be64(span_id);
++		//hnode->trace_id.a = cpu_to_be64(trace_id.a);
++		//hnode->trace_id.b = cpu_to_be64(trace_id.b);
++
++		INIT_HLIST_NODE(&hnode->node);
++		hash_add(current->nsproxy->net_ns->ipv6.h_fdspans,
++				&hnode->node, hnode->fd);
++	}
++
++release_f:
++	fdput(f);
++out:
++	return err;
++}
++#endif
++
+ /*
+  *	Create a pair of connected sockets.
+  */
+@@ -1671,6 +1729,7 @@ SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
+ 	struct msghdr msg;
+ 	struct iovec iov;
+ 	int fput_needed;
++	struct hnode_trace_span *hnode;
+ 
+ 	err = import_single_range(WRITE, buff, len, &iov, &msg.msg_iter);
+ 	if (unlikely(err))
+@@ -1679,6 +1738,17 @@ SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
+ 	if (!sock)
+ 		goto out;
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	hnode = get_span(fd);
++	if (!hnode) {
++		sock->sk->sk_active_span = 0;
++		//sock->sk->sk_active_trace = 0;
++	} else {
++		sock->sk->sk_active_span = hnode->span_id;
++		//sock->sk->sk_active_trace = hnode->trace_id;
++	}
++#endif
++
+ 	msg.msg_name = NULL;
+ 	msg.msg_control = NULL;
+ 	msg.msg_controllen = 0;
+@@ -2023,11 +2093,23 @@ long __sys_sendmsg(int fd, struct user_msghdr __user *msg, unsigned flags)
+ 	int fput_needed, err;
+ 	struct msghdr msg_sys;
+ 	struct socket *sock;
++	struct hnode_trace_span *hnode;
+ 
+ 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
+ 	if (!sock)
+ 		goto out;
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	hnode = get_span(fd);
++	if (!hnode) {
++		sock->sk->sk_active_span = 0;
++		//sock->sk->sk_active_trace = 0;
++	} else {
++		sock->sk->sk_active_span = hnode->span_id;
++		//sock->sk->sk_active_trace = hnode->trace_id;
++	}
++#endif
++
+ 	err = ___sys_sendmsg(sock, msg, &msg_sys, flags, NULL, 0);
+ 
+ 	fput_light(sock->file, fput_needed);
+@@ -2056,6 +2138,7 @@ int __sys_sendmmsg(int fd, struct mmsghdr __user *mmsg, unsigned int vlen,
+ 	struct msghdr msg_sys;
+ 	struct used_address used_address;
+ 	unsigned int oflags = flags;
++	struct hnode_trace_span *hnode;
+ 
+ 	if (vlen > UIO_MAXIOV)
+ 		vlen = UIO_MAXIOV;
+@@ -2066,6 +2149,17 @@ int __sys_sendmmsg(int fd, struct mmsghdr __user *mmsg, unsigned int vlen,
+ 	if (!sock)
+ 		return err;
+ 
++#if IS_ENABLED(CONFIG_IPV6_IOAM)
++	hnode = get_span(fd);
++	if (!hnode) {
++		sock->sk->sk_active_span = 0;
++		//sock->sk->sk_active_trace = 0;
++	} else {
++		sock->sk->sk_active_span = hnode->span_id;
++		//sock->sk->sk_active_trace = hnode->trace_id;
++	}
++#endif
++
+ 	used_address.name_len = UINT_MAX;
+ 	entry = mmsg;
+ 	compat_entry = (struct compat_mmsghdr __user *)mmsg;
