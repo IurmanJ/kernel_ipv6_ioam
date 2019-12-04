@@ -54,7 +54,7 @@ sudo tcpdump -i h_athos2 -w athos.pcap &
 ./containers/athos/client.py
 ```
 
-Compare the output of the client (Span IDs) with IOAM headers in both the client (athos.pcap) and the server (aramis.pcap). Here is an example:
+Compare the output of the client (Span IDs) with IOAM headers in both the client (*athos.pcap*) and the server (*aramis.pcap*). Here is an example:
 
 ![Client_Spans](./images/client_spans.png?raw=true "Span IDs on the client")
 ![Wireshark_Client_Server](./images/wireshark.png?raw=true "Comparison between IOAM headers on the client and on the server")
