@@ -1,5 +1,5 @@
 diff --git a/arch/x86/entry/syscalls/syscall_32.tbl b/arch/x86/entry/syscalls/syscall_32.tbl
-index 448ac21..429b765 100644
+index 448ac2161112..429b765be799 100644
 --- a/arch/x86/entry/syscalls/syscall_32.tbl
 +++ b/arch/x86/entry/syscalls/syscall_32.tbl
 @@ -391,3 +391,4 @@
@@ -8,7 +8,7 @@ index 448ac21..429b765 100644
  384	i386	arch_prctl		sys_arch_prctl			compat_sys_arch_prctl
 +385	i386	socket_ioam		sys_socket_ioam
 diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
-index 5aef183..cfc1260 100644
+index 5aef183e2f85..cfc12603a514 100644
 --- a/arch/x86/entry/syscalls/syscall_64.tbl
 +++ b/arch/x86/entry/syscalls/syscall_64.tbl
 @@ -339,6 +339,7 @@
@@ -20,7 +20,7 @@ index 5aef183..cfc1260 100644
  #
  # x32-specific system call numbers start at 512 to avoid cache impact
 diff --git a/fs/file.c b/fs/file.c
-index 1c2972e..3ce2138 100644
+index 1c2972e3a405..3ce21382987e 100644
 --- a/fs/file.c
 +++ b/fs/file.c
 @@ -23,6 +23,10 @@
@@ -59,7 +59,7 @@ index 1c2972e..3ce2138 100644
  
  out_unlock:
 diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
-index 980c3c9..531e105 100644
+index 980c3c9b06f8..531e1056e1c4 100644
 --- a/include/linux/syscalls.h
 +++ b/include/linux/syscalls.h
 @@ -81,6 +81,10 @@ union bpf_attr;
@@ -85,7 +85,7 @@ index 980c3c9..531e105 100644
  asmlinkage long sys_socketcall(int call, unsigned long __user *args);
  asmlinkage long sys_listen(int, int);
 diff --git a/include/net/ioam.h b/include/net/ioam.h
-index 6c1b390..328d45c 100644
+index 6c1b390f64df..328d45cb51e4 100644
 --- a/include/net/ioam.h
 +++ b/include/net/ioam.h
 @@ -7,6 +7,7 @@
@@ -170,7 +170,7 @@ index 6c1b390..328d45c 100644
  				continue;
  
 diff --git a/include/net/netns/ipv6.h b/include/net/netns/ipv6.h
-index 6aa0c26..b20ce7d2 100644
+index 6aa0c26f181b..b20ce7d225a9 100644
 --- a/include/net/netns/ipv6.h
 +++ b/include/net/netns/ipv6.h
 @@ -94,6 +94,7 @@ struct netns_ipv6 {
@@ -182,7 +182,7 @@ index 6aa0c26..b20ce7d2 100644
  };
  
 diff --git a/include/net/sock.h b/include/net/sock.h
-index f33e3d1..eea73c6 100644
+index f33e3d134e0b..eea73c6101d3 100644
 --- a/include/net/sock.h
 +++ b/include/net/sock.h
 @@ -72,6 +72,10 @@
@@ -208,7 +208,7 @@ index f33e3d1..eea73c6 100644
  
  #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))
 diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
-index 061185a..c772789 100644
+index 061185a5eb51..c772789192da 100644
 --- a/include/uapi/asm-generic/unistd.h
 +++ b/include/uapi/asm-generic/unistd.h
 @@ -896,6 +896,14 @@ __SYSCALL(__NR_fork, sys_ni_syscall)
@@ -227,7 +227,7 @@ index 061185a..c772789 100644
  
  /*
 diff --git a/kernel/sys_ni.c b/kernel/sys_ni.c
-index 8acef85..b1c5b3c 100644
+index 8acef8576ce9..b1c5b3c01f91 100644
 --- a/kernel/sys_ni.c
 +++ b/kernel/sys_ni.c
 @@ -42,6 +42,7 @@ cond_syscall(sys_send);
@@ -238,23 +238,8 @@ index 8acef85..b1c5b3c 100644
  cond_syscall(sys_setsockopt);
  cond_syscall(compat_sys_setsockopt);
  cond_syscall(sys_getsockopt);
-diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
-index 5c4f5b0..d996219 100644
---- a/net/ipv6/exthdrs.c
-+++ b/net/ipv6/exthdrs.c
-@@ -835,8 +835,8 @@ static bool ipv6_hop_ioam(struct sk_buff *skb, int optoff)
- 			return true;
- 		}
- 
--		// +12 octets to move FROM Option Type TO the beginning of the node data list
--		node_offset = opth + 12 + remaining_len*4 - node_len*4;
-+		// +N octets to move FROM Option Type TO the beginning of the node data list
-+		node_offset = opth + ioam_ipv6opt_header_size() + ioam_trace_header_size() + remaining_len*4 - node_len*4;
- 		ioam_fill_trace_data_node(trace_type, ns->data, skb, node_offset);
- 		*(opth + 7) = remaining_len - node_len;
- 		break;
 diff --git a/net/ipv6/ioam.c b/net/ipv6/ioam.c
-index be59065..d428a00 100644
+index 397b706cedea..1c320302fdca 100644
 --- a/net/ipv6/ioam.c
 +++ b/net/ipv6/ioam.c
 @@ -127,9 +127,10 @@ static void clear_dev_counters(struct hwrapper *hwrapper)
@@ -283,22 +268,20 @@ index be59065..d428a00 100644
  	/* Free iOAM encapsulation buffers per dev */
  	rtnl_lock();
  	for_each_netdev(net_namespace(), dev)
-@@ -331,7 +339,8 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
+@@ -331,6 +339,7 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
  
  			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].trace.type;
  			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
--			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 12 + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->span_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_trace_header_size() - 8 - dev->ioam_hbh->ioam_offset;
-+			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_trace_header_size() + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_trace_header_size() + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
  			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = (encaps[i].trace.incremental) ? NULL : ioam_fill_trace_data_node;
  
- 			optnumhbh++;
 @@ -351,6 +360,7 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
  
  			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].pot.type;
  			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->span_offset = 0;
- 			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
+ 			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_pot_header_size() - dev->ioam_hbh->ioam_offset;
  			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = ioam_fill_pot_data_node;
  
 @@ -370,6 +380,7 @@ static bool ioam_encap_dev_buffers(struct hwrapper *hwrapper, unsigned int encap
@@ -306,7 +289,7 @@ index be59065..d428a00 100644
  			dev->ioam_dst->ioam_opt[optnumdst]->type = encaps[i].e2e.type;
  			dev->ioam_dst->ioam_opt[optnumdst]->ns_data = ns->data;
 +			dev->ioam_dst->ioam_opt[optnumdst]->span_offset = 0;
- 			dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
+ 			dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + ioam_ipv6opt_header_size() + ioam_e2e_header_size() - dev->ioam_dst->ioam_offset;
  			dev->ioam_dst->ioam_opt[optnumdst]->write_handler = ioam_fill_e2e_data_node;
  
 @@ -566,6 +577,7 @@ static long ioam_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -318,7 +301,7 @@ index be59065..d428a00 100644
  		/* Per namespace data */
  		for(i = 0; i < buffer.ns_nb; i++)
 diff --git a/net/socket.c b/net/socket.c
-index c2564eb..2375671 100644
+index c2564eb25c6b..2375671ee2ce 100644
 --- a/net/socket.c
 +++ b/net/socket.c
 @@ -108,6 +108,10 @@

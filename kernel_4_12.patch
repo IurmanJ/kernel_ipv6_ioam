@@ -1,5 +1,5 @@
 diff --git a/include/linux/ipv6.h b/include/linux/ipv6.h
-index e1b4429..123dcf0 100644
+index e1b442996f81..123dcf03335f 100644
 --- a/include/linux/ipv6.h
 +++ b/include/linux/ipv6.h
 @@ -120,6 +120,9 @@ struct inet6_skb_parm {
@@ -21,7 +21,7 @@ index e1b4429..123dcf0 100644
  
  #if defined(CONFIG_NET_L3_MASTER_DEV)
 diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
-index 4ed952c..0d61510 100644
+index 4ed952c17fc7..0d61510eed70 100644
 --- a/include/linux/netdevice.h
 +++ b/include/linux/netdevice.h
 @@ -53,6 +53,10 @@
@@ -54,7 +54,7 @@ index 4ed952c..0d61510 100644
  	 *	I/O specific fields
  	 *	FIXME: Merge these and struct ifmap into one
 diff --git a/include/linux/skbuff.h b/include/linux/skbuff.h
-index a098d95..e828c2e 100644
+index a098d95b3d84..e828c2ecb40d 100644
 --- a/include/linux/skbuff.h
 +++ b/include/linux/skbuff.h
 @@ -667,7 +667,11 @@ struct sk_buff {
@@ -83,7 +83,7 @@ index a098d95..e828c2e 100644
  static inline int skb_tnl_header_len(const struct sk_buff *inner_skb)
 diff --git a/include/net/ioam.h b/include/net/ioam.h
 new file mode 100644
-index 0000000..6c1b390
+index 000000000000..6c1b390f64df
 --- /dev/null
 +++ b/include/net/ioam.h
 @@ -0,0 +1,755 @@
@@ -843,7 +843,7 @@ index 0000000..6c1b390
 +#endif
 +
 diff --git a/include/net/netns/ipv6.h b/include/net/netns/ipv6.h
-index de7745e..6aa0c26 100644
+index de7745e2edcc..6aa0c26f181b 100644
 --- a/include/net/netns/ipv6.h
 +++ b/include/net/netns/ipv6.h
 @@ -8,6 +8,10 @@
@@ -870,7 +870,7 @@ index de7745e..6aa0c26 100644
  
  #if IS_ENABLED(CONFIG_NF_DEFRAG_IPV6)
 diff --git a/include/uapi/linux/in6.h b/include/uapi/linux/in6.h
-index 46444f8..7dc2d97 100644
+index 46444f8fbee4..7dc2d977e839 100644
 --- a/include/uapi/linux/in6.h
 +++ b/include/uapi/linux/in6.h
 @@ -144,6 +144,8 @@ struct in6_flowlabel_req {
@@ -884,7 +884,7 @@ index 46444f8..7dc2d97 100644
  
 diff --git a/include/uapi/linux/ioam.h b/include/uapi/linux/ioam.h
 new file mode 100644
-index 0000000..e7f5f10
+index 000000000000..e7f5f1048adb
 --- /dev/null
 +++ b/include/uapi/linux/ioam.h
 @@ -0,0 +1,250 @@
@@ -1139,7 +1139,7 @@ index 0000000..e7f5f10
 +#endif
 +
 diff --git a/net/ipv6/Kconfig b/net/ipv6/Kconfig
-index 48c4529..72dd60e 100644
+index 48c452959d2c..72dd60e1f821 100644
 --- a/net/ipv6/Kconfig
 +++ b/net/ipv6/Kconfig
 @@ -339,4 +339,10 @@ config IPV6_SEG6_HMAC
@@ -1154,7 +1154,7 @@ index 48c4529..72dd60e 100644
 +
  endif # IPV6
 diff --git a/net/ipv6/Makefile b/net/ipv6/Makefile
-index 217e9ff..99bb511 100644
+index 217e9ff0e24b..99bb51180204 100644
 --- a/net/ipv6/Makefile
 +++ b/net/ipv6/Makefile
 @@ -25,6 +25,7 @@ ipv6-$(CONFIG_SYN_COOKIES) += syncookies.o
@@ -1166,7 +1166,7 @@ index 217e9ff..99bb511 100644
  ipv6-objs += $(ipv6-y)
  
 diff --git a/net/ipv6/exthdrs.c b/net/ipv6/exthdrs.c
-index b636f1da..5c4f5b0 100644
+index b636f1da9aec..d996219d22c9 100644
 --- a/net/ipv6/exthdrs.c
 +++ b/net/ipv6/exthdrs.c
 @@ -55,6 +55,11 @@
@@ -1357,8 +1357,8 @@ index b636f1da..5c4f5b0 100644
 +			return true;
 +		}
 +
-+		// +12 octets to move FROM Option Type TO the beginning of the node data list
-+		node_offset = opth + 12 + remaining_len*4 - node_len*4;
++		// +N octets to move FROM Option Type TO the beginning of the node data list
++		node_offset = opth + ioam_ipv6opt_header_size() + ioam_trace_header_size() + remaining_len*4 - node_len*4;
 +		ioam_fill_trace_data_node(trace_type, ns->data, skb, node_offset);
 +		*(opth + 7) = remaining_len - node_len;
 +		break;
@@ -1440,7 +1440,7 @@ index b636f1da..5c4f5b0 100644
  
 diff --git a/net/ipv6/ioam.c b/net/ipv6/ioam.c
 new file mode 100644
-index 0000000..be59065
+index 000000000000..397b706cedea
 --- /dev/null
 +++ b/net/ipv6/ioam.c
 @@ -0,0 +1,670 @@
@@ -1777,7 +1777,7 @@ index 0000000..be59065
 +
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].trace.type;
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
-+			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 12 + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_trace_header_size() + node_len*encaps[i].trace.hop_nb - node_len - dev->ioam_hbh->ioam_offset;
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = (encaps[i].trace.incremental) ? NULL : ioam_fill_trace_data_node;
 +
 +			optnumhbh++;
@@ -1797,7 +1797,7 @@ index 0000000..be59065
 +
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->type = encaps[i].pot.type;
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->ns_data = ns->data;
-+			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + 8 - dev->ioam_hbh->ioam_offset;
++			dev->ioam_hbh->ioam_opt[optnumhbh]->write_offset = hn->hbh_idx + ioam_ipv6opt_header_size() + ioam_pot_header_size() - dev->ioam_hbh->ioam_offset;
 +			dev->ioam_hbh->ioam_opt[optnumhbh]->write_handler = ioam_fill_pot_data_node;
 +
 +			optnumhbh++;
@@ -1816,7 +1816,7 @@ index 0000000..be59065
 +
 +			dev->ioam_dst->ioam_opt[optnumdst]->type = encaps[i].e2e.type;
 +			dev->ioam_dst->ioam_opt[optnumdst]->ns_data = ns->data;
-+			dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + 8 - dev->ioam_dst->ioam_offset;
++			dev->ioam_dst->ioam_opt[optnumdst]->write_offset = hn->dst_idx + ioam_ipv6opt_header_size() + ioam_e2e_header_size() - dev->ioam_dst->ioam_offset;
 +			dev->ioam_dst->ioam_opt[optnumdst]->write_handler = ioam_fill_e2e_data_node;
 +
 +			optnumdst++;
@@ -2115,7 +2115,7 @@ index 0000000..be59065
 +MODULE_SUPPORTED_DEVICE("ioam");
 +
 diff --git a/net/ipv6/ip6_input.c b/net/ipv6/ip6_input.c
-index 9ee208a..4afc773 100644
+index 9ee208a348f5..4afc7735e71c 100644
 --- a/net/ipv6/ip6_input.c
 +++ b/net/ipv6/ip6_input.c
 @@ -47,6 +47,10 @@
@@ -2216,7 +2216,7 @@ index 9ee208a..4afc773 100644
  {
  	return NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_IN,
 diff --git a/net/ipv6/ip6_output.c b/net/ipv6/ip6_output.c
-index 1699acb..9e61344 100644
+index 1699acb2fa2c..9e61344f6f27 100644
 --- a/net/ipv6/ip6_output.c
 +++ b/net/ipv6/ip6_output.c
 @@ -59,6 +59,10 @@
@@ -2269,7 +2269,7 @@ index 1699acb..9e61344 100644
  }
  
 diff --git a/net/ipv6/output_core.c b/net/ipv6/output_core.c
-index e9065b8..c75d3f3 100644
+index e9065b8d3af8..c75d3f38f5e1 100644
 --- a/net/ipv6/output_core.c
 +++ b/net/ipv6/output_core.c
 @@ -10,6 +10,10 @@
