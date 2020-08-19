@@ -59,6 +59,10 @@ Three nodes are involved in the IOAM domain:
 
 ### Testing IOAM
 
+You can watch the entire demo by clicking on the following video:
+
+[![GIF_video](./video.gif?raw=true "IPv6 IOAM demo video")](https://youtu.be/0Gxrtq-f5k8)
+
 For each IOAM node, compile its registration program
 ```
 cd lxc/<node>/
