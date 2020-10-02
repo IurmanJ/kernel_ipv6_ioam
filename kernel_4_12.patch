@@ -83,10 +83,10 @@ index a098d95..e828c2e 100644
  static inline int skb_tnl_header_len(const struct sk_buff *inner_skb)
 diff --git a/include/net/ioam.h b/include/net/ioam.h
 new file mode 100644
-index 0000000..6c1b390
+index 0000000..dac2d38
 --- /dev/null
 +++ b/include/net/ioam.h
-@@ -0,0 +1,755 @@
+@@ -0,0 +1,756 @@
 +#ifndef _NET_IOAM_H
 +#define _NET_IOAM_H
 +
@@ -748,26 +748,27 @@ index 0000000..6c1b390
 +	}
 +	if (type & IOAM_TRACE_TYPE_2) {
 +		if (!skb->tstamp)
-+			*(__be32 *)data = 0xffffffff;
-+		else {
-+			skb_get_timestamp(skb, &ts);
-+			*(__be32 *)data = cpu_to_be32((u32) ts.tv_sec);
-+		}
++			__net_timestamp(skb);
++
++		skb_get_timestamp(skb, &ts);
++
++		*(__be32 *)data = cpu_to_be32((u32) ts.tv_sec);
 +		data += IOAM_TRACE_TYPE_2_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_3) {
 +		if (!skb->tstamp)
-+			*(__be32 *)data = 0xffffffff;
-+		else {
-+			if (!(type & IOAM_TRACE_TYPE_2))
-+				skb_get_timestamp(skb, &ts);
++			__net_timestamp(skb);
 +
-+			*(__be32 *)data = cpu_to_be32((u32) ts.tv_usec);
-+		}
++		if (!(type & IOAM_TRACE_TYPE_2))
++			skb_get_timestamp(skb, &ts);
++
++		*(__be32 *)data = cpu_to_be32((u32) ts.tv_usec);
 +		data += IOAM_TRACE_TYPE_3_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_4) {
-+		//TODO transit delay could be computed if TX timestamp was keeping track of RX timestamp (skb->tstamp at output - input skb->tstamp)
++		// Transit delay: not implemented
++		// It would require to hook at output too, which would be expensive.
++		// Also, skb->tstamp is used for both RX and TX timestamp, so we'd need to make sure that we still have RX at the output side (before TX insertion) to compute the difference between the two. However, this would NOT represent the exact transit delay.
 +		*(__be32 *)data = 0xffffffff;
 +		data += IOAM_TRACE_TYPE_4_SIZE;
 +	}
@@ -798,7 +799,7 @@ index 0000000..6c1b390
 +		data += IOAM_TRACE_TYPE_6_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_7) {
-+		//TODO waiting for draft update
++		// Opaque State Snapshot: available in the patch sent upstream (won't be updated here)
 +		*(__be32 *)data = cpu_to_be32(0x00ffffff);
 +		data += IOAM_TRACE_TYPE_7_SIZE;
 +	}
@@ -824,7 +825,7 @@ index 0000000..6c1b390
 +		data += IOAM_TRACE_TYPE_10_SIZE;
 +	}
 +	if (type & IOAM_TRACE_TYPE_11) {
-+		//TODO how can we get the buffer occupancy ?
++		//TODO get the buffer occupancy
 +		*(__be32 *)data = 0xffffffff;
 +		data += IOAM_TRACE_TYPE_11_SIZE;
 +	}
