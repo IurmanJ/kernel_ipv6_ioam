@@ -7,8 +7,6 @@ Implementation of IOAM for IPv6 in the Linux Kernel, based on following drafts:
 
 ### Patching the kernel
 
-Patches are generated from [another repository where development takes place](https://github.com/IurmanJ/linux-ioam-ipv6/tree/4.12_ioam).
-
 In order to include IOAM, the kernel needs to be patched. Download the kernel version 4.12.
 ```
 wget https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.12.tar.xz
