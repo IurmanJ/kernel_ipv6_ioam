@@ -1,0 +1,382 @@
+diff --git a/include/uapi/linux/ioam6_genl.h b/include/uapi/linux/ioam6_genl.h
+new file mode 100644
+index 00000000..0dd94b26
+--- /dev/null
++++ b/include/uapi/linux/ioam6_genl.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: GPL-2.0+ WITH Linux-syscall-note */
++/*
++ *  IPv6 IOAM Generic Netlink API
++ *
++ *  Author:
++ *  Justin Iurman <justin.iurman@uliege.be>
++ */
++
++#ifndef _UAPI_LINUX_IOAM6_GENL_H
++#define _UAPI_LINUX_IOAM6_GENL_H
++
++#define IOAM6_GENL_NAME "IOAM6"
++#define IOAM6_GENL_VERSION 0x1
++
++enum {
++	IOAM6_ATTR_UNSPEC,
++
++	IOAM6_ATTR_NS_ID,	/* u16 */
++	IOAM6_ATTR_NS_DATA,	/* u64 */
++
++#define IOAM6_MAX_SCHEMA_DATA_LEN (255 * 4)
++	IOAM6_ATTR_SC_ID,	/* u32 */
++	IOAM6_ATTR_SC_DATA,	/* Binary */
++	IOAM6_ATTR_SC_NONE,	/* Flag */
++
++	IOAM6_ATTR_PAD,
++
++	__IOAM6_ATTR_MAX,
++};
++#define IOAM6_ATTR_MAX (__IOAM6_ATTR_MAX - 1)
++
++enum {
++	IOAM6_CMD_UNSPEC,
++
++	IOAM6_CMD_ADD_NAMESPACE,
++	IOAM6_CMD_DEL_NAMESPACE,
++	IOAM6_CMD_DUMP_NAMESPACES,
++
++	IOAM6_CMD_ADD_SCHEMA,
++	IOAM6_CMD_DEL_SCHEMA,
++	IOAM6_CMD_DUMP_SCHEMAS,
++
++	IOAM6_CMD_NS_SET_SCHEMA,
++
++	__IOAM6_CMD_MAX,
++};
++#define IOAM6_CMD_MAX (__IOAM6_CMD_MAX - 1)
++
++#endif /* _UAPI_LINUX_IOAM6_GENL_H */
+diff --git a/ip/Makefile b/ip/Makefile
+index 4cad619c..ec056c5b 100644
+--- a/ip/Makefile
++++ b/ip/Makefile
+@@ -11,7 +11,7 @@ IPOBJ=ip.o ipaddress.o ipaddrlabel.o iproute.o iprule.o ipnetns.o \
+     iplink_bridge.o iplink_bridge_slave.o ipfou.o iplink_ipvlan.o \
+     iplink_geneve.o iplink_vrf.o iproute_lwtunnel.o ipmacsec.o ipila.o \
+     ipvrf.o iplink_xstats.o ipseg6.o iplink_netdevsim.o iplink_rmnet.o \
+-    ipnexthop.o ipmptcp.o iplink_bareudp.o
++    ipnexthop.o ipmptcp.o iplink_bareudp.o ipioam6.o
+ 
+ RTMONOBJ=rtmon.o
+ 
+diff --git a/ip/ip.c b/ip/ip.c
+index 40d2998a..edd03040 100644
+--- a/ip/ip.c
++++ b/ip/ip.c
+@@ -67,7 +67,7 @@ static void usage(void)
+ 		"where  OBJECT := { link | address | addrlabel | route | rule | neigh | ntable |\n"
+ 		"                   tunnel | tuntap | maddress | mroute | mrule | monitor | xfrm |\n"
+ 		"                   netns | l2tp | fou | macsec | tcp_metrics | token | netconf | ila |\n"
+-		"                   vrf | sr | nexthop | mptcp }\n"
++		"                   vrf | sr | nexthop | mptcp | ioam }\n"
+ 		"       OPTIONS := { -V[ersion] | -s[tatistics] | -d[etails] | -r[esolve] |\n"
+ 		"                    -h[uman-readable] | -iec | -j[son] | -p[retty] |\n"
+ 		"                    -f[amily] { inet | inet6 | mpls | bridge | link } |\n"
+@@ -120,6 +120,7 @@ static const struct cmd {
+ 	{ "sr",		do_seg6 },
+ 	{ "nexthop",	do_ipnh },
+ 	{ "mptcp",	do_mptcp },
++	{ "ioam",	do_ioam6 },
+ 	{ "help",	do_help },
+ 	{ 0 }
+ };
+diff --git a/ip/ip_common.h b/ip/ip_common.h
+index 9a31e837..67bd72da 100644
+--- a/ip/ip_common.h
++++ b/ip/ip_common.h
+@@ -88,6 +88,7 @@ int netns_identify_pid(const char *pidstr, char *name, int len);
+ int do_seg6(int argc, char **argv);
+ int do_ipnh(int argc, char **argv);
+ int do_mptcp(int argc, char **argv);
++int do_ioam6(int argc, char **argv);
+ 
+ int iplink_get(char *name, __u32 filt_mask);
+ int iplink_ifla_xstats(int argc, char **argv);
+diff --git a/ip/ipioam6.c b/ip/ipioam6.c
+new file mode 100644
+index 00000000..3a2aa91a
+--- /dev/null
++++ b/ip/ipioam6.c
+@@ -0,0 +1,275 @@
++/*
++ * ioam6.c "ip ioam"
++ *
++ *	  This program is free software; you can redistribute it and/or
++ *	  modify it under the terms of the GNU General Public License
++ *	  version 2 as published by the Free Software Foundation;
++ *
++ * Author: Justin Iurman <justin.iurman@uliege.be>
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <errno.h>
++#include <inttypes.h>
++
++#include <linux/genetlink.h>
++#include <linux/ioam6_genl.h>
++
++#include "utils.h"
++#include "ip_common.h"
++#include "libgenl.h"
++#include "json_print.h"
++
++static void usage(void)
++{
++	fprintf(stderr,
++		"Usage:	ip ioam { COMMAND | help }\n"
++		"	ip ioam namespace show\n"
++		"	ip ioam namespace add ID [ DATA ]\n"
++		"	ip ioam namespace del ID\n"
++		"	ip ioam schema show\n"
++		"	ip ioam schema add ID DATA\n"
++		"	ip ioam schema del ID\n"
++		"	ip ioam namespace set ID schema { ID | none }\n");
++	exit(-1);
++}
++
++static struct rtnl_handle grth = { .fd = -1 };
++static int genl_family = -1;
++
++#define IOAM6_REQUEST(_req, _bufsiz, _cmd, _flags) \
++	 GENL_REQUEST(_req, _bufsiz, genl_family, 0, \
++				IOAM6_GENL_VERSION, _cmd, _flags)
++
++static struct {
++	unsigned int cmd;
++	__u16 ns_id;
++	__u64 ns_data;
++	bool has_ns_data;
++	bool sc_none;
++	__u32 sc_id;
++	__u8 sc_data[IOAM6_MAX_SCHEMA_DATA_LEN];
++} opts;
++
++static void print_namespace(struct rtattr *attrs[])
++{
++	char data[20];
++
++	print_uint(PRINT_ANY, "namespace", "namespace %u, ",
++		   rta_getattr_u16(attrs[IOAM6_ATTR_NS_ID]));
++
++	if (!attrs[IOAM6_ATTR_NS_DATA])
++		print_null(PRINT_ANY, "data", "no data", NULL);
++	else {
++		sprintf(data, "0x%" PRIx64,
++			(uint64_t)rta_getattr_u64(attrs[IOAM6_ATTR_NS_DATA]));
++		print_string(PRINT_ANY, "data", "data %s", data);
++	}
++
++	if (attrs[IOAM6_ATTR_SC_ID])
++		print_uint(PRINT_ANY, "schema", " [schema %u]",
++			   rta_getattr_u32(attrs[IOAM6_ATTR_SC_ID]));
++
++	print_null(PRINT_ANY, "", "\n", NULL);
++}
++
++static void print_schema(struct rtattr *attrs[])
++{
++	__u8 data[IOAM6_MAX_SCHEMA_DATA_LEN + 1];
++	int len;
++
++	print_uint(PRINT_ANY, "schema", "schema %u, ",
++		   rta_getattr_u32(attrs[IOAM6_ATTR_SC_ID]));
++
++	len = RTA_PAYLOAD(attrs[IOAM6_ATTR_SC_DATA]);
++	memcpy(data, RTA_DATA(attrs[IOAM6_ATTR_SC_DATA]), len);
++	data[len] = '\0';
++
++	print_string(PRINT_ANY, "data", "data \"%s\"", (const char *)data);
++
++	if (attrs[IOAM6_ATTR_NS_ID])
++		print_uint(PRINT_ANY, "namespace", " [namespace %u]",
++			   rta_getattr_u16(attrs[IOAM6_ATTR_NS_ID]));
++
++	print_null(PRINT_ANY, "", "\n", NULL);
++}
++
++static int process_msg(struct nlmsghdr *n, void *arg)
++{
++	struct rtattr *attrs[IOAM6_ATTR_MAX + 1];
++	struct genlmsghdr *ghdr;
++	int len = n->nlmsg_len;
++
++	if (n->nlmsg_type != genl_family)
++		return -1;
++
++	len -= NLMSG_LENGTH(GENL_HDRLEN);
++	if (len < 0)
++		return -1;
++
++	ghdr = NLMSG_DATA(n);
++
++	parse_rtattr(attrs, IOAM6_ATTR_MAX, (void *)ghdr + GENL_HDRLEN, len);
++
++	open_json_object(NULL);
++	switch (ghdr->cmd) {
++	case IOAM6_CMD_DUMP_NAMESPACES:
++		print_namespace(attrs);
++		break;
++	case IOAM6_CMD_DUMP_SCHEMAS:
++		print_schema(attrs);
++		break;
++	}
++	close_json_object();
++
++	return 0;
++}
++
++static int ioam6_do_cmd(void)
++{
++	IOAM6_REQUEST(req, 1036, opts.cmd, NLM_F_REQUEST);
++	int dump = 0;
++
++	if (genl_family < 0) {
++		if (rtnl_open_byproto(&grth, 0, NETLINK_GENERIC) < 0) {
++			fprintf(stderr, "Cannot open generic netlink socket\n");
++			exit(1);
++		}
++		genl_family = genl_resolve_family(&grth, IOAM6_GENL_NAME);
++		if (genl_family < 0)
++			exit(1);
++		req.n.nlmsg_type = genl_family;
++	}
++
++	switch (opts.cmd) {
++	case IOAM6_CMD_ADD_NAMESPACE:
++		addattr16(&req.n, sizeof(req), IOAM6_ATTR_NS_ID, opts.ns_id);
++		if (opts.has_ns_data)
++			addattr64(&req.n, sizeof(req), IOAM6_ATTR_NS_DATA,
++				  opts.ns_data);
++		break;
++	case IOAM6_CMD_DEL_NAMESPACE:
++		addattr16(&req.n, sizeof(req), IOAM6_ATTR_NS_ID, opts.ns_id);
++		break;
++	case IOAM6_CMD_DUMP_NAMESPACES:
++	case IOAM6_CMD_DUMP_SCHEMAS:
++		dump = 1;
++		break;
++	case IOAM6_CMD_ADD_SCHEMA:
++		addattr32(&req.n, sizeof(req), IOAM6_ATTR_SC_ID, opts.sc_id);
++		addattr_l(&req.n, sizeof(req), IOAM6_ATTR_SC_DATA, opts.sc_data,
++			  strlen((const char *)opts.sc_data));
++		break;
++	case IOAM6_CMD_DEL_SCHEMA:
++		addattr32(&req.n, sizeof(req), IOAM6_ATTR_SC_ID, opts.sc_id);
++		break;
++	case IOAM6_CMD_NS_SET_SCHEMA:
++		addattr16(&req.n, sizeof(req), IOAM6_ATTR_NS_ID, opts.ns_id);
++		if (opts.sc_none)
++			addattr(&req.n, sizeof(req), IOAM6_ATTR_SC_NONE);
++		else
++			addattr32(&req.n, sizeof(req), IOAM6_ATTR_SC_ID,
++				  opts.sc_id);
++		break;
++	}
++
++	if (!dump) {
++		if (rtnl_talk(&grth, &req.n, NULL) < 0)
++			return -1;
++	} else {
++		req.n.nlmsg_flags |= NLM_F_DUMP;
++		req.n.nlmsg_seq = grth.dump = ++grth.seq;
++		if (rtnl_send(&grth, &req, req.n.nlmsg_len) < 0) {
++			perror("Failed to send dump request");
++			exit(1);
++		}
++
++		new_json_obj(json);
++		if (rtnl_dump_filter(&grth, process_msg, stdout) < 0) {
++			fprintf(stderr, "Dump terminated\n");
++			exit(1);
++		}
++		delete_json_obj();
++		fflush(stdout);
++	}
++
++	return 0;
++}
++
++int do_ioam6(int argc, char **argv)
++{
++	if (argc < 1 || matches(*argv, "help") == 0)
++		usage();
++
++	memset(&opts, 0, sizeof(opts));
++
++	if (matches(*argv, "namespace") == 0) {
++		NEXT_ARG();
++		if (matches(*argv, "show") == 0) {
++			opts.cmd = IOAM6_CMD_DUMP_NAMESPACES;
++		} else if (matches(*argv, "add") == 0) {
++			NEXT_ARG();
++			if (get_u16(&opts.ns_id, *argv, 0))
++				invarg("Invalid namespace ID", *argv);
++			if (NEXT_ARG_OK()) {
++				NEXT_ARG();
++				if (get_u64(&opts.ns_data, *argv, 16))
++					invarg("Invalid namespace DATA", *argv);
++				opts.has_ns_data = true;
++			}
++			opts.cmd = IOAM6_CMD_ADD_NAMESPACE;
++		} else if (matches(*argv, "del") == 0) {
++			NEXT_ARG();
++			if (get_u16(&opts.ns_id, *argv, 0))
++				invarg("Invalid namespace ID", *argv);
++			opts.cmd = IOAM6_CMD_DEL_NAMESPACE;
++		} else if (matches(*argv, "set") == 0) {
++			NEXT_ARG();
++			if (get_u16(&opts.ns_id, *argv, 0))
++				invarg("Invalid namespace ID", *argv);
++			NEXT_ARG();
++			if (matches(*argv, "schema") != 0)
++				invarg("Unknown", *argv);
++			NEXT_ARG();
++			if (matches(*argv, "none") == 0)
++				opts.sc_none = true;
++			else {
++				if (get_u32(&opts.sc_id, *argv, 0))
++					invarg("Invalid schema ID", *argv);
++				opts.sc_none = false;
++			}
++			opts.cmd = IOAM6_CMD_NS_SET_SCHEMA;
++		} else {
++			invarg("Unknown", *argv);
++		}
++	} else if (matches(*argv, "schema") == 0) {
++		NEXT_ARG();
++		if (matches(*argv, "show") == 0) {
++			opts.cmd = IOAM6_CMD_DUMP_SCHEMAS;
++		} else if (matches(*argv, "add") == 0) {
++			NEXT_ARG();
++			if (get_u32(&opts.sc_id, *argv, 0))
++				invarg("Invalid schema ID", *argv);
++			NEXT_ARG();
++			if (strlen(*argv) > IOAM6_MAX_SCHEMA_DATA_LEN)
++				invarg("Schema DATA too big", *argv);
++			memcpy(opts.sc_data, *argv, strlen(*argv));
++			opts.cmd = IOAM6_CMD_ADD_SCHEMA;
++
++		} else if (matches(*argv, "del") == 0) {
++			NEXT_ARG();
++			if (get_u32(&opts.sc_id, *argv, 0))
++				invarg("Invalid schema ID", *argv);
++			opts.cmd = IOAM6_CMD_DEL_SCHEMA;
++		} else {
++			invarg("Unknown", *argv);
++		}
++	} else {
++		invarg("Unknown", *argv);
++	}
++
++	return ioam6_do_cmd();
++}
