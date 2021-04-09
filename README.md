@@ -1,4 +1,4 @@
-# kernel_ipv6_ioam
+# Kernel patch for IPv6 IOAM
 
 Implementation of IOAM for IPv6 in the Linux Kernel, based on following drafts:
 - [In-situ OAM IPv6 Options](https://tools.ietf.org/html/draft-ietf-ippm-ioam-ipv6-options-05) (version 05)
