@@ -42,12 +42,12 @@ cd demo/
 sudo ./topology_setup.sh
 ```
 
-Open a shell and enter **Alpha**.
+Open a shell and enter **Athos**.
 ```
-sudo lxc-attach -n alpha
+sudo lxc-attach -n athos
 ```
 
-From inside **Alpha**, generate some traffic (eg. a ping) towards **Aramis**
+From inside **Athos**, generate some traffic (eg. a ping) towards **Aramis**
 ```
 ping6 db02::2
 ```
